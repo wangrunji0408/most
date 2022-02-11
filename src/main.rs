@@ -41,13 +41,25 @@ async fn main() {
             }
             deque.push_back(b);
             let s = deque_to_vec(&deque);
+            let len = s.len();
 
             // update rem matrix
             let x = b - b'0';
-            for (rem, &m) in rem.iter_mut().zip(ms.iter()) {
-                for i in (1..=s.len()).rev() {
-                    rem[i] = (&rem[i - 1] * 10u8 + x) % m;
-                }
+            let mut tasks = vec![];
+            for (mut rem, &m) in rem.drain(..).zip(ms.iter()) {
+                tasks.push(tokio::spawn(async move {
+                    for i in (1..=len).rev() {
+                        // rem[i] = (&rem[i - 1] * 10u8 + x) % m;
+                        rem[i] = &rem[i - 1] * 10u8 + x;
+                        while rem[i] >= *m {
+                            rem[i] -= m;
+                        }
+                    }
+                    rem
+                }));
+            }
+            for t in tasks {
+                rem.push(t.await.unwrap());
             }
 
             // test rem == 0
@@ -58,12 +70,7 @@ async fn main() {
                 }
                 if let Some(j) = rem.iter().position(|r| r[len] == zero) {
                     send(n).await;
-                    println!(
-                        "{:?}: {}: {}",
-                        t0.elapsed(),
-                        ms[j],
-                        std::str::from_utf8(n).unwrap()
-                    );
+                    println!("{:?}", t0.elapsed(),);
                 }
             }
         }
