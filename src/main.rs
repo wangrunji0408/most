@@ -1,6 +1,7 @@
 use futures::stream::StreamExt;
 use num_bigint::BigUint;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Instant;
 
 const N: usize = 512;
@@ -27,12 +28,12 @@ async fn main() {
             .parse::<BigUint>()
             .unwrap(),
     ));
-    let zero = "0".parse::<BigUint>().unwrap();
     let ms: [&_; 3] = [m1, m2, m3];
 
     let mut deque = VecDeque::with_capacity(N);
     // rem[k][i] = s[-i:] % m_k
-    let mut rem = vec![vec![BigUint::new(vec![]); N + 1]; 3];
+    let mut old = vec![vec![BigUint::new(vec![]); N + 1]; 3];
+    let mut new = vec![vec![BigUint::new(vec![]); N + 1]; 3];
     while let Some(item) = stream.next().await {
         let t0 = Instant::now();
         for b in item.unwrap() {
@@ -40,39 +41,48 @@ async fn main() {
                 deque.pop_front();
             }
             deque.push_back(b);
-            let s = deque_to_vec(&deque);
+            let s = Arc::new(deque_to_vec(&deque));
             let len = s.len();
 
             // update rem matrix
             let x = b - b'0';
+            let step = 512 / 6;
             let mut tasks = vec![];
-            for (mut rem, &m) in rem.drain(..).zip(ms.iter()) {
+            for i0 in (1..=len).step_by(step) {
+                let s = s.clone();
+                let old: &'static Vec<Vec<BigUint>> = unsafe { std::mem::transmute(&old) };
+                let new: &'static mut Vec<Vec<BigUint>> = unsafe { std::mem::transmute(&mut new) };
                 tasks.push(tokio::spawn(async move {
-                    for i in (1..=len).rev() {
-                        // rem[i] = (&rem[i - 1] * 10u8 + x) % m;
-                        rem[i] = &rem[i - 1] * 10u8 + x;
-                        while rem[i] >= *m {
-                            rem[i] -= m;
+                    let zero = BigUint::default();
+                    for i in i0..(i0 + step).min(len + 1) {
+                        for k in 0..3 {
+                            new[k][i] = &old[k][i - 1] * 10u8 + x;
+                            while new[k][i] >= *ms[k] {
+                                new[k][i] -= ms[k];
+                            }
+                        }
+                        // test
+                        let n = &s[s.len() - i..];
+                        if n[0] == b'0' {
+                            continue;
+                        }
+                        if let Some(j) = new.iter().position(|r| r[i] == zero) {
+                            send(n).await;
+                            println!("{:?}", t0.elapsed());
+                            // println!(
+                            //     "{:?}: {}: {}",
+                            //     t0.elapsed(),
+                            //     ms[j],
+                            //     std::str::from_utf8(n).unwrap()
+                            // );
                         }
                     }
-                    rem
                 }));
             }
             for t in tasks {
-                rem.push(t.await.unwrap());
+                t.await.unwrap();
             }
-
-            // test rem == 0
-            for len in 1..=s.len() {
-                let n = &s[s.len() - len..];
-                if n[0] == b'0' {
-                    continue;
-                }
-                if let Some(j) = rem.iter().position(|r| r[len] == zero) {
-                    send(n).await;
-                    println!("{:?}", t0.elapsed(),);
-                }
-            }
+            std::mem::swap(&mut old, &mut new);
         }
     }
 }
