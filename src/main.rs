@@ -1,5 +1,7 @@
 use futures::stream::StreamExt;
 use num_bigint::BigUint;
+use std::collections::VecDeque;
+use std::time::Instant;
 
 const N: usize = 512;
 
@@ -26,14 +28,18 @@ async fn main() {
             .unwrap(),
     ));
 
-    let mut s = vec![];
+    let mut deque = VecDeque::with_capacity(N);
     while let Some(item) = stream.next().await {
         for b in item.unwrap() {
-            s.push(b);
-            while s.len() > N {
-                s.remove(0);
+            while deque.len() >= N {
+                deque.pop_front();
             }
-            let s = s.clone();
+            deque.push_back(b);
+            let (a, b) = deque.as_slices();
+            let mut s = Vec::with_capacity(N);
+            s.extend_from_slice(a);
+            s.extend_from_slice(b);
+            let t0 = Instant::now();
             tokio::spawn(async move {
                 let zero = "0".parse::<BigUint>().unwrap();
                 let even = s[s.len() - 1] % 2 == 0;
@@ -44,13 +50,13 @@ async fn main() {
                     let n = BigUint::parse_bytes(&s[i..], 10).unwrap();
                     if even && &n % m1 == zero {
                         send(&s[i..]).await;
-                        println!("{}: {}", m1, n);
+                        println!("{:?}: {}: {}", t0.elapsed(), m1, n);
                     } else if &n % m2 == zero {
                         send(&s[i..]).await;
-                        println!("{}: {}", m2, n);
+                        println!("{:?}: {}: {}", t0.elapsed(), m2, n);
                     } else if &n % m3 == zero {
                         send(&s[i..]).await;
-                        println!("{}: {}", m3, n);
+                        println!("{:?}: {}: {}", t0.elapsed(), m2, n);
                     }
                 }
             });
