@@ -41,16 +41,16 @@ async fn main() {
     // 104648257118348370704723099: 104648257118348370704723099
     // $ factor 125000000000000064750000000000009507500000000000294357
     // factor: ‘125000000000000064750000000000009507500000000000294357’ is too large
-    let m1 = Box::leak(Box::new("20220209192254".parse::<BigUint>().unwrap()));
-    let m2 = Box::leak(Box::new(
-        "104648257118348370704723099".parse::<BigUint>().unwrap(),
-    ));
-    let m3 = Box::leak(Box::new(
-        "125000000000000064750000000000009507500000000000294357"
-            .parse::<BigUint>()
-            .unwrap(),
-    ));
-    let ms: [&_; 3] = [m1, m2, m3];
+    let m1 = "20220209192254".parse::<BigUint>().unwrap();
+    let m2 = "104648257118348370704723099".parse::<BigUint>().unwrap();
+    let m3 = "125000000000000064750000000000009507500000000000294357"
+        .parse::<BigUint>()
+        .unwrap();
+    let ms = &*Box::leak(Box::new([
+        [&m1 * 1u8, &m1 * 2u8, &m1 * 4u8],
+        [&m2 * 1u8, &m2 * 2u8, &m2 * 4u8],
+        [&m3 * 1u8, &m3 * 2u8, &m3 * 4u8],
+    ]));
 
     let mut deque = VecDeque::new();
     let mut rem: Vec<[BigUint; 3]> = vec![];
@@ -79,8 +79,14 @@ async fn main() {
                     let x = deque[j] - b'0';
                     for (f, m) in f.iter_mut().zip(ms) {
                         *f = &*f * 10u8 + x;
-                        while &*f >= m {
-                            *f -= m;
+                        while &*f >= &m[2] {
+                            *f -= &m[2];
+                        }
+                        if &*f >= &m[1] {
+                            *f -= &m[1];
+                        }
+                        if &*f >= &m[0] {
+                            *f -= &m[0];
                         }
                     }
                     if let Some(k) = f.iter().position(|f| f == &zero) {
