@@ -1,8 +1,10 @@
 use futures::future::try_join_all;
-use hyper::{body::HttpBody, client::conn, Body, Request, Uri};
+use hyper::{body::HttpBody, Uri};
 use num_bigint::BigUint;
 use std::collections::VecDeque;
+use std::io::IoSlice;
 use std::time::Instant;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 const N: usize = 512;
@@ -18,26 +20,17 @@ async fn main() {
     // responsor
     tokio::spawn(async move {
         loop {
-            let stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
-            let (mut sender, connection) = conn::handshake(stream).await.unwrap();
-            // spawn a task to poll the connection and drive the HTTP state
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("Error in connection: {}", e);
-                }
-            });
+            let mut stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
             let (t0, t1, body) = rx.recv().await.unwrap();
-            let request = Request::post("/submit?user=omicron&passwd=y8J6IGKr")
-                .body(Body::from(body))
-                .unwrap();
-            let res = match sender.send_request(request).await {
-                Ok(res) => res,
-                Err(e) => {
-                    eprintln!("failed to send request: {}", e);
-                    continue;
-                }
-            };
-            assert!(res.status().is_success());
+
+            const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 47.95.111.217:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
+            let content_length = format!("Content-Length: {}\r\n\r\n", body.len());
+            let iov = [
+                IoSlice::new(HEADER.as_bytes()),
+                IoSlice::new(content_length.as_bytes()),
+                IoSlice::new(&body),
+            ];
+            stream.write_vectored(&iov).await.unwrap();
             println!("{:?} {:?}", t0.elapsed(), t1 - t0);
         }
     });

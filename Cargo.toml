@@ -8,7 +8,7 @@ edition = "2021"
 futures = "0.3"
 hyper = { version = "0.14", features = ["http1", "client", "tcp"] }
 num-bigint = "0.4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "io-util"] }
 
 [dev-dependencies]
 criterion = "0.3"
