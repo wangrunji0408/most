@@ -6,9 +6,9 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3"
+hyper = { version = "0.14", features = ["http1", "client", "tcp"] }
 num-bigint = "0.4"
-reqwest = { version = "0.11", features = ["stream"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync"] }
 
 [dev-dependencies]
 criterion = "0.3"

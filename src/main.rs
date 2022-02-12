@@ -1,17 +1,46 @@
 use futures::future::try_join_all;
-use futures::stream::StreamExt;
+use hyper::{body::HttpBody, client::conn, Body, Request, Uri};
 use num_bigint::BigUint;
 use std::collections::VecDeque;
 use std::time::Instant;
+use tokio::net::TcpStream;
 
 const N: usize = 512;
 
 #[tokio::main]
 async fn main() {
-    let mut stream = reqwest::get("http://47.95.111.217:10001")
+    let mut body = hyper::Client::new()
+        .get(Uri::from_static("http://47.95.111.217:10001"))
         .await
-        .unwrap()
-        .bytes_stream();
+        .unwrap();
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(Instant, Instant, Vec<u8>)>(8);
+    // responsor
+    tokio::spawn(async move {
+        loop {
+            let stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
+            let (mut sender, connection) = conn::handshake(stream).await.unwrap();
+            // spawn a task to poll the connection and drive the HTTP state
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    eprintln!("Error in connection: {}", e);
+                }
+            });
+            let (t0, t1, body) = rx.recv().await.unwrap();
+            let request = Request::post("/submit?user=omicron&passwd=y8J6IGKr")
+                .body(Body::from(body))
+                .unwrap();
+            let res = match sender.send_request(request).await {
+                Ok(res) => res,
+                Err(e) => {
+                    eprintln!("failed to send request: {}", e);
+                    continue;
+                }
+            };
+            assert!(res.status().is_success());
+            println!("{:?} {:?}", t0.elapsed(), t1 - t0);
+        }
+    });
 
     // $ factor 20220209192254
     // 20220209192254: 2 23 122509 3588061
@@ -33,7 +62,7 @@ async fn main() {
     let mut deque = VecDeque::new();
     let mut rem: Vec<[BigUint; 3]> = vec![];
     // rem[i][k] = deque[i..] % m[k]
-    while let Some(item) = stream.next().await {
+    while let Some(item) = body.data().await {
         let t0 = Instant::now();
         let bytes = item.unwrap();
         let tail_len = deque.len();
@@ -43,6 +72,7 @@ async fn main() {
         for i in 0..deque.len() {
             let mut f = rem.get(i).cloned().unwrap_or_default();
             let deque: &VecDeque<u8> = unsafe { std::mem::transmute(&deque) };
+            let tx = tx.clone();
             tasks.push(tokio::spawn(async move {
                 if deque[i] == b'0' {
                     return Default::default();
@@ -61,9 +91,9 @@ async fn main() {
                         }
                     }
                     if let Some(k) = f.iter().position(|f| f == &zero) {
+                        let t1 = Instant::now();
                         let n: Vec<u8> = deque.range(i..=j).cloned().collect();
-                        send(n).await;
-                        println!("{:?}", t0.elapsed());
+                        tx.send((t0, t1, n)).await.unwrap();
                         // println!(
                         //     "{:?}: {}: {}",
                         //     t0.elapsed(),
@@ -86,13 +116,4 @@ async fn main() {
             deque.pop_front();
         }
     }
-}
-
-async fn send(body: Vec<u8>) {
-    reqwest::Client::new()
-        .post("http://47.95.111.217:10002/submit?user=omicron&passwd=y8J6IGKr")
-        .body(body)
-        .send()
-        .await
-        .unwrap();
 }
