@@ -18,7 +18,7 @@ const N: usize = 512;
 const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
 const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
-// M4: 2^184 * 3^0 * 7^0
+// M4: 2^178 * 3^0 * 7^0
 
 #[tokio::main]
 async fn main() {
@@ -27,7 +27,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<(Instant, Vec<u8>)>(8);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u8, Instant, Vec<u8>)>(8);
     // responsor
     tokio::spawn(async move {
         let t00 = Instant::now();
@@ -35,7 +35,7 @@ async fn main() {
         let mut count = 0;
         loop {
             let mut stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
-            let (t0, body) = rx.recv().await.unwrap();
+            let (k, t0, body) = rx.recv().await.unwrap();
 
             const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 47.95.111.217:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
             let content_length = format!("Content-Length: {}\r\n\r\n", body.len());
@@ -52,7 +52,7 @@ async fn main() {
             count += 1;
             let avg = dsum / count;
             let nps = count as f32 / t00.elapsed().as_secs_f32();
-            println!("lat: {latency:?}\tavg: {avg:?}\tnps: {nps:.3?}");
+            println!("M{k} lat: {latency:?}\tavg: {avg:?}\tnps: {nps:.3?}");
         }
     });
 
@@ -93,26 +93,25 @@ async fn main() {
                     f.0 = (f.0 * 10 + x as u64) % M1;
                     f.1 = rem_m2(f.1 * 10 + x as u128);
                     // f.2 = (f.2 * 10u8 + x) % m3;
-                    f.2 = f.2 * 10u8 + x;
+                    f.2 = f.2 * 10 + x;
                     let idx = m3s.partition_point(|m| &f.2 >= m);
                     if idx > 0 {
                         f.2 -= m3s[idx - 1];
                     }
-                    f.3 = f.3 * 10u8 + x;
-                    f.3 .0[3] = 0;
-                    fn low184_is_zero(x: &U256) -> bool {
-                        x.0[0] == 0 && x.0[1] == 0 && x.0[2] & ((1 << 56) - 1) == 0
-                    }
+                    const M4_MASK: U256 = U256([u64::MAX, u64::MAX, u64::MAX >> 14, 0]);
+                    f.3 = (f.3 * 10 + x) & M4_MASK;
 
-                    if f.0 == 0 || f.1 == 0 || f.2.is_zero() || low184_is_zero(&f.3) {
+                    let k = match () {
+                        _ if f.0 == 0 => 1,
+                        _ if f.1 == 0 => 2,
+                        _ if f.2.is_zero() => 3,
+                        _ if f.3.is_zero() => 4,
+                        _ => 0,
+                    };
+                    if k != 0 {
                         let n: Vec<u8> = deque.range(i..=j).cloned().collect();
-                        tx.send((t0, n)).await.unwrap();
-                        // println!(
-                        //     "{:?}: {}: {}",
-                        //     t0.elapsed(),
-                        //     ms[_k][0],
-                        //     std::str::from_utf8(&n).unwrap()
-                        // );
+                        tx.send((k, t0, n)).await.unwrap();
+                        tokio::task::yield_now().await;
                     }
                 }
                 f
