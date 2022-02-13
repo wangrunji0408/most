@@ -1,6 +1,6 @@
 use futures::future::try_join_all;
 use hyper::{body::HttpBody, Uri};
-use num_bigint::BigUint;
+use primitive_types::U256;
 use std::collections::VecDeque;
 use std::io::IoSlice;
 use std::time::{Duration, Instant};
@@ -50,12 +50,12 @@ async fn main() {
     let m1 = 20220209192254_u64;
     let m2 = 104648257118348370704723099_u128;
     let m3 = "125000000000000064750000000000009507500000000000294357"
-        .parse::<BigUint>()
+        .parse::<U256>()
         .unwrap();
     let m3s = &*Vec::leak((0u8..10).map(|i| &m3 * i).collect());
 
     let mut deque = VecDeque::new();
-    let mut rem: Vec<(u64, u128, BigUint)> = vec![];
+    let mut rem: Vec<(u64, u128, U256)> = vec![];
     // rem[i][k] = deque[i..] % m[k]
     while let Some(item) = body.data().await {
         let t0 = Instant::now();
@@ -75,7 +75,6 @@ async fn main() {
                 if deque[i] == b'0' {
                     return Default::default();
                 }
-                let zero = BigUint::default();
                 for j in tail_len.max(i)..deque.len() {
                     let len = j + 1 - i;
                     if len > N {
@@ -89,10 +88,10 @@ async fn main() {
                     f.2 = f.2 * 10u8 + x;
                     let idx = m3s.partition_point(|m| &f.2 >= m);
                     if idx > 0 {
-                        f.2 -= &m3s[idx - 1];
+                        f.2 -= m3s[idx - 1];
                     }
 
-                    if f.0 == 0 || f.1 == 0 || f.2 == zero {
+                    if f.0 == 0 || f.1 == 0 || f.2.is_zero() {
                         let n: Vec<u8> = deque.range(i..=j).cloned().collect();
                         tx.send((t0, n)).await.unwrap();
                         // println!(
