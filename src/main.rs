@@ -1,4 +1,5 @@
 use futures::future::try_join_all;
+use hyper::body::Bytes;
 use hyper::{body::HttpBody, Uri};
 use primitive_types::U256;
 use std::collections::VecDeque;
@@ -19,6 +20,7 @@ const N: usize = 512;
 const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
 const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
+const M4_MASK: U256 = U256([u64::MAX, u64::MAX, u64::MAX >> 14, 0]);
 // M4: 2^178 * 3^0 * 7^0
 
 #[tokio::main]
@@ -28,11 +30,11 @@ async fn main() {
         .await
         .unwrap();
 
-    let (tx, mut rx) = mpsc::channel::<TcpStream>(8);
+    let (tcp_tx, mut tcp_rx) = mpsc::channel::<TcpStream>(8);
     tokio::spawn(async move {
         loop {
             let stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
-            tx.send(stream).await.unwrap();
+            tcp_tx.send(stream).await.unwrap();
         }
     });
 
@@ -44,7 +46,10 @@ async fn main() {
 
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut rem: Vec<u64> = vec![0; N];
+    let mut f1: Vec<u64> = vec![0; N];
+    let mut f2: Vec<u128> = vec![0; N];
+    let mut f3: Vec<U256> = vec![U256::default(); N];
+    let mut f4: Vec<U256> = vec![U256::default(); N];
     let mut valid: Vec<bool> = vec![false; N];
     let mut pos = 0;
     while let Some(item) = body.data().await {
@@ -57,46 +62,74 @@ async fn main() {
             }
             deque.push_back(b);
 
-            rem[pos] = 0;
             let x = b - b'0';
-            for f in &mut rem {
+            valid[pos] = x != 0;
+
+            f1[pos] = 0;
+            for f in &mut f1 {
                 *f = (*f * 10 + x as u64) % M1;
             }
-            valid[pos] = x != 0;
-            pos += 1;
-            if pos == N {
-                pos = 0;
-            }
+
+            // f2[pos] = 0;
+            // for f in &mut f2 {
+            //     *f = rem_m2(*f * 10 + x as u128);
+            // }
+
+            // f3[pos] = U256::default();
+            // for f in &mut f3 {
+            //     *f = *f * 10u8 + x;
+            //     let idx = m3s.partition_point(|m| &*f >= m);
+            //     if idx > 0 {
+            //         *f -= m3s[idx - 1];
+            //     }
+            // }
+
+            // f4[pos] = U256::default();
+            // for f in &mut f4 {
+            //     *f = (*f * 10u8 + x) & M4_MASK;
+            // }
+
+            pos = if pos == N - 1 { 0 } else { pos + 1 };
 
             for i in 0..deque.len() {
-                if valid[i] && rem[i] == 0 {
+                if !valid[i] {
+                    continue;
+                }
+                let k = match () {
+                    _ if f1[i] == 0 => 1,
+                    // _ if f2[i] == 0 => 2,
+                    // _ if f3[i].is_zero() => 3,
+                    // _ if f4[i].is_zero() => 4,
+                    _ => 0,
+                };
+                if k != 0 {
                     let len = if i < pos { pos - i } else { N - (i - pos) };
-                    let (mut n0, mut n1) = deque.as_slices();
-                    if n1.len() >= len {
-                        n0 = &[];
-                        n1 = &n1[n1.len() - len..];
-                    } else {
-                        n0 = &n0[deque.len() - len..];
-                    }
-                    let tcp = rx.recv().await.unwrap();
-                    send(tcp, (n0, n1)).await;
-                    stat.add(0, t0);
+                    let tcp = tcp_rx.recv().await.unwrap();
+                    send(tcp, len, &deque).await;
+                    stat.add(k, t0);
                 }
             }
         }
     }
 }
 
-async fn send(mut tcp: TcpStream, body: (&[u8], &[u8])) {
+async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
+    let (mut n0, mut n1) = deque.as_slices();
+    if n1.len() >= len {
+        n0 = &[];
+        n1 = &n1[n1.len() - len..];
+    } else {
+        n0 = &n0[deque.len() - len..];
+    }
     const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 47.95.111.217:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
-    let content_length = format!("Content-Length: {}\r\n\r\n", body.0.len() + body.1.len());
+    let content_length = format!("Content-Length: {}\r\n\r\n", len);
     let iov = [
         IoSlice::new(HEADER.as_bytes()),
         IoSlice::new(content_length.as_bytes()),
-        IoSlice::new(body.0),
-        IoSlice::new(body.1),
+        IoSlice::new(n0),
+        IoSlice::new(n1),
     ];
-    tcp.write_vectored(&iov).await.unwrap();
+    // tcp.write_vectored(&iov).await.unwrap();
 }
 
 struct Stat {
