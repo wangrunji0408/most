@@ -91,7 +91,7 @@ async fn main() {
                     let x = deque[j] - b'0';
 
                     f.0 = (f.0 * 10 + x as u64) % M1;
-                    f.1 = (f.1 * 10 + x as u128) % M2;
+                    f.1 = rem_m2(f.1 * 10 + x as u128);
                     // f.2 = (f.2 * 10u8 + x) % m3;
                     f.2 = f.2 * 10u8 + x;
                     let idx = m3s.partition_point(|m| &f.2 >= m);
@@ -127,6 +127,42 @@ async fn main() {
 
         while deque.len() >= N {
             deque.pop_front();
+        }
+    }
+}
+
+fn rem_m2(x: u128) -> u128 {
+    if x >= M2 * 5 {
+        if x >= M2 * 7 {
+            if x >= M2 * 9 {
+                x - M2 * 9
+            } else if x >= M2 * 8 {
+                x - M2 * 8
+            } else {
+                x - M2 * 7
+            }
+        } else {
+            if x >= M2 * 6 {
+                x - M2 * 6
+            } else {
+                x - M2 * 5
+            }
+        }
+    } else {
+        if x >= M2 * 2 {
+            if x >= M2 * 4 {
+                x - M2 * 4
+            } else if x >= M2 * 3 {
+                x - M2 * 3
+            } else {
+                x - M2 * 2
+            }
+        } else {
+            if x >= M2 * 1 {
+                x - M2 * 1
+            } else {
+                x
+            }
         }
     }
 }
