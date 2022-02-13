@@ -71,9 +71,15 @@ async fn main() {
             for i in 0..deque.len() {
                 if valid[i] && rem[i] == 0 {
                     let len = if i < pos { pos - i } else { N - (i - pos) };
-                    let n: Vec<u8> = deque.range(deque.len() - len..).cloned().collect();
+                    let (mut n0, mut n1) = deque.as_slices();
+                    if n1.len() >= len {
+                        n0 = &[];
+                        n1 = &n1[n1.len() - len..];
+                    } else {
+                        n0 = &n0[deque.len() - len..];
+                    }
                     let tcp = rx.recv().await.unwrap();
-                    send(tcp, &n).await;
+                    send(tcp, (n0, n1)).await;
                     stat.add(0, t0);
                 }
             }
@@ -81,13 +87,14 @@ async fn main() {
     }
 }
 
-async fn send(mut tcp: TcpStream, body: &[u8]) {
+async fn send(mut tcp: TcpStream, body: (&[u8], &[u8])) {
     const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 47.95.111.217:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
-    let content_length = format!("Content-Length: {}\r\n\r\n", body.len());
+    let content_length = format!("Content-Length: {}\r\n\r\n", body.0.len() + body.1.len());
     let iov = [
         IoSlice::new(HEADER.as_bytes()),
         IoSlice::new(content_length.as_bytes()),
-        IoSlice::new(body),
+        IoSlice::new(body.0),
+        IoSlice::new(body.1),
     ];
     tcp.write_vectored(&iov).await.unwrap();
 }
