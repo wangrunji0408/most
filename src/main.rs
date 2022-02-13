@@ -18,6 +18,7 @@ const N: usize = 512;
 const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
 const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
+// M4: 2^184 * 3^0 * 7^0
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +63,7 @@ async fn main() {
     let m3s = &*Vec::leak((0u8..10).map(|i| M3 * i).collect());
 
     let mut deque = VecDeque::new();
-    let mut rem: Vec<(u64, u128, U256)> = vec![];
+    let mut rem: Vec<(u64, u128, U256, U256)> = vec![];
     // rem[i][k] = deque[i..] % m[k]
     while let Some(item) = body.data().await {
         let t0 = Instant::now();
@@ -97,8 +98,13 @@ async fn main() {
                     if idx > 0 {
                         f.2 -= m3s[idx - 1];
                     }
+                    f.3 = f.3 * 10u8 + x;
+                    f.3 .0[3] = 0;
+                    fn low184_is_zero(x: &U256) -> bool {
+                        x.0[0] == 0 && x.0[1] == 0 && x.0[2] & ((1 << 56) - 1) == 0
+                    }
 
-                    if f.0 == 0 || f.1 == 0 || f.2.is_zero() {
+                    if f.0 == 0 || f.1 == 0 || f.2.is_zero() || low184_is_zero(&f.3) {
                         let n: Vec<u8> = deque.range(i..=j).cloned().collect();
                         tx.send((t0, n)).await.unwrap();
                         // println!(
