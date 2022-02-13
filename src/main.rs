@@ -9,6 +9,16 @@ use tokio::net::TcpStream;
 
 const N: usize = 512;
 
+// $ factor 20220209192254
+// 20220209192254: 2 23 122509 3588061
+// $ factor 104648257118348370704723099
+// 104648257118348370704723099: 104648257118348370704723099
+// $ factor 125000000000000064750000000000009507500000000000294357
+// factor: ‘125000000000000064750000000000009507500000000000294357’ is too large
+const M1: u64 = 20220209192254;
+const M2: u128 = 104648257118348370704723099;
+const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
+
 #[tokio::main]
 async fn main() {
     let mut body = hyper::Client::new()
@@ -19,6 +29,7 @@ async fn main() {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<(Instant, Vec<u8>)>(8);
     // responsor
     tokio::spawn(async move {
+        let t00 = Instant::now();
         let mut dsum = Duration::default();
         let mut count = 0;
         loop {
@@ -34,25 +45,21 @@ async fn main() {
             ];
             stream.write_vectored(&iov).await.unwrap();
 
-            let d = t0.elapsed();
-            dsum += d;
+            // statistics
+            let latency = t0.elapsed();
+            dsum += latency;
             count += 1;
-            println!("{:?}\tavg: {:?}", d, dsum / count);
+            let avg = dsum / count;
+            let nps = count as f32 / t00.elapsed().as_secs_f32();
+            println!("lat: {latency:?}\tavg: {avg:?}\tnps: {nps:.3?}");
         }
     });
 
-    // $ factor 20220209192254
-    // 20220209192254: 2 23 122509 3588061
-    // $ factor 104648257118348370704723099
-    // 104648257118348370704723099: 104648257118348370704723099
-    // $ factor 125000000000000064750000000000009507500000000000294357
-    // factor: ‘125000000000000064750000000000009507500000000000294357’ is too large
-    let m1 = 20220209192254_u64;
-    let m2 = 104648257118348370704723099_u128;
-    let m3 = "125000000000000064750000000000009507500000000000294357"
-        .parse::<U256>()
-        .unwrap();
-    let m3s = &*Vec::leak((0u8..10).map(|i| &m3 * i).collect());
+    assert_eq!(
+        M3.to_string(),
+        "125000000000000064750000000000009507500000000000294357"
+    );
+    let m3s = &*Vec::leak((0u8..10).map(|i| M3 * i).collect());
 
     let mut deque = VecDeque::new();
     let mut rem: Vec<(u64, u128, U256)> = vec![];
@@ -82,8 +89,8 @@ async fn main() {
                     }
                     let x = deque[j] - b'0';
 
-                    f.0 = (f.0 * 10 + x as u64) % m1;
-                    f.1 = (f.1 * 10 + x as u128) % m2;
+                    f.0 = (f.0 * 10 + x as u64) % M1;
+                    f.1 = (f.1 * 10 + x as u128) % M2;
                     // f.2 = (f.2 * 10u8 + x) % m3;
                     f.2 = f.2 * 10u8 + x;
                     let idx = m3s.partition_point(|m| &f.2 >= m);
