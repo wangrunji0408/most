@@ -1,9 +1,6 @@
-use futures::future::try_join_all;
-use hyper::body::Bytes;
-use hyper::{body::HttpBody, Uri};
 use primitive_types::U256;
 use std::collections::VecDeque;
-use std::io::IoSlice;
+use std::io::{IoSlice, Read, Write};
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -25,11 +22,6 @@ const M4_MASK: U256 = U256([u64::MAX, u64::MAX, u64::MAX >> 14, 0]);
 
 #[tokio::main]
 async fn main() {
-    let mut body = hyper::Client::new()
-        .get(Uri::from_static("http://47.95.111.217:10001"))
-        .await
-        .unwrap();
-
     let (tcp_tx, mut tcp_rx) = mpsc::channel::<TcpStream>(8);
     tokio::spawn(async move {
         loop {
@@ -37,6 +29,15 @@ async fn main() {
             tcp_tx.send(stream).await.unwrap();
         }
     });
+
+    let mut get_tcp = std::net::TcpStream::connect("47.95.111.217:10001").unwrap();
+    get_tcp
+        .write(b"GET HTTP/1.1\r\nHost: 47.95.111.217:10001\r\n\r\n")
+        .unwrap();
+    const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
+    let mut buf = [0; 1024];
+    let len = get_tcp.read(&mut buf[..OK_HEADER.len()]).unwrap();
+    assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
     assert_eq!(
         M3.to_string(),
@@ -50,20 +51,19 @@ async fn main() {
     let mut f2: Vec<u128> = vec![0; N];
     let mut f3: Vec<U256> = vec![U256::default(); N];
     let mut f4: Vec<U256> = vec![U256::default(); N];
-    let mut valid: Vec<bool> = vec![false; N];
     let mut pos = 0;
-    while let Some(item) = body.data().await {
+    loop {
+        let len = get_tcp.read(&mut buf).unwrap();
         let t0 = Instant::now();
-        let bytes = item.unwrap();
+        let bytes = &buf[..len];
 
-        for b in bytes {
+        for &b in bytes {
             if deque.len() == N {
                 deque.pop_front();
             }
             deque.push_back(b);
 
             let x = b - b'0';
-            valid[pos] = x != 0;
 
             f1[pos] = 0;
             for f in &mut f1 {
@@ -92,9 +92,6 @@ async fn main() {
             pos = if pos == N - 1 { 0 } else { pos + 1 };
 
             for i in 0..deque.len() {
-                if !valid[i] {
-                    continue;
-                }
                 let k = match () {
                     _ if f1[i] == 0 => 1,
                     // _ if f2[i] == 0 => 2,
@@ -104,6 +101,9 @@ async fn main() {
                 };
                 if k != 0 {
                     let len = if i < pos { pos - i } else { N - (i - pos) };
+                    if deque[deque.len() - len] == b'0' {
+                        continue;
+                    }
                     let tcp = tcp_rx.recv().await.unwrap();
                     send(tcp, len, &deque).await;
                     stat.add(k, t0);
@@ -129,7 +129,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    // tcp.write_vectored(&iov).await.unwrap();
+    tcp.write_vectored(&iov).await.unwrap();
 }
 
 struct Stat {
