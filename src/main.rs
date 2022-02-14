@@ -1,9 +1,9 @@
 use primitive_types::U256;
 use std::collections::VecDeque;
 use std::io::{IoSlice, Read, Write};
+use std::net::TcpStream;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 const N: usize = 512;
@@ -22,15 +22,16 @@ const M4_MASK: U256 = U256([u64::MAX, u64::MAX, u64::MAX >> 14, 0]);
 
 #[tokio::main]
 async fn main() {
-    let (tcp_tx, mut tcp_rx) = mpsc::channel::<TcpStream>(8);
-    tokio::spawn(async move {
-        loop {
-            let stream = TcpStream::connect("47.95.111.217:10002").await.unwrap();
-            tcp_tx.send(stream).await.unwrap();
-        }
-    });
+    let (tx1, rx1) = mpsc::channel(8);
+    tokio::spawn(task1(rx1));
+    let (tx2, rx2) = mpsc::channel(8);
+    tokio::spawn(task2(rx2));
+    let (tx3, rx3) = mpsc::channel(8);
+    tokio::spawn(task3(rx3));
+    let (tx4, rx4) = mpsc::channel(8);
+    tokio::spawn(task4(rx4));
 
-    let mut get_tcp = std::net::TcpStream::connect("47.95.111.217:10001").unwrap();
+    let mut get_tcp = TcpStream::connect("47.95.111.217:10001").unwrap();
     get_tcp
         .write(b"GET HTTP/1.1\r\nHost: 47.95.111.217:10001\r\n\r\n")
         .unwrap();
@@ -39,25 +40,39 @@ async fn main() {
     let len = get_tcp.read(&mut buf[..OK_HEADER.len()]).unwrap();
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
-    assert_eq!(
-        M3.to_string(),
-        "125000000000000064750000000000009507500000000000294357"
-    );
-    let m3s = &*Vec::leak((0u8..10).map(|i| M3 * i).collect());
+    loop {
+        let mut buf = vec![0; 1024];
+        let len = get_tcp.read(&mut buf).unwrap();
+        let t0 = Instant::now();
+        buf.truncate(len);
+        let bytes = Arc::<[u8]>::from(buf);
 
+        tx1.send((t0, bytes.clone())).await.unwrap();
+        tx2.send((t0, bytes.clone())).await.unwrap();
+        tx3.send((t0, bytes.clone())).await.unwrap();
+        tx4.send((t0, bytes)).await.unwrap();
+    }
+}
+
+fn tcps() -> mpsc::Receiver<TcpStream> {
+    let (tx, rx) = mpsc::channel::<TcpStream>(4);
+    tokio::spawn(async move {
+        loop {
+            let stream = TcpStream::connect("47.95.111.217:10002").unwrap();
+            tx.send(stream).await.unwrap();
+        }
+    });
+    rx
+}
+
+async fn task1(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
+    let mut tcp_rx = tcps();
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
     let mut f1: Vec<u64> = vec![0; N];
-    let mut f2: Vec<u128> = vec![0; N];
-    let mut f3: Vec<U256> = vec![U256::default(); N];
-    let mut f4: Vec<U256> = vec![U256::default(); N];
     let mut pos = 0;
-    loop {
-        let len = get_tcp.read(&mut buf).unwrap();
-        let t0 = Instant::now();
-        let bytes = &buf[..len];
-
-        for &b in bytes {
+    while let Some((t0, bytes)) = rx.recv().await {
+        for &b in bytes.iter() {
             if deque.len() == N {
                 deque.pop_front();
             }
@@ -70,43 +85,138 @@ async fn main() {
                 *f = (*f * 10 + x as u64) % M1;
             }
 
-            // f2[pos] = 0;
-            // for f in &mut f2 {
-            //     *f = rem_m2(*f * 10 + x as u128);
-            // }
-
-            // f3[pos] = U256::default();
-            // for f in &mut f3 {
-            //     *f = *f * 10u8 + x;
-            //     let idx = m3s.partition_point(|m| &*f >= m);
-            //     if idx > 0 {
-            //         *f -= m3s[idx - 1];
-            //     }
-            // }
-
-            // f4[pos] = U256::default();
-            // for f in &mut f4 {
-            //     *f = (*f * 10u8 + x) & M4_MASK;
-            // }
-
             pos = if pos == N - 1 { 0 } else { pos + 1 };
 
             for i in 0..deque.len() {
-                let k = match () {
-                    _ if f1[i] == 0 => 1,
-                    // _ if f2[i] == 0 => 2,
-                    // _ if f3[i].is_zero() => 3,
-                    // _ if f4[i].is_zero() => 4,
-                    _ => 0,
-                };
-                if k != 0 {
+                if f1[i] == 0 {
                     let len = if i < pos { pos - i } else { N - (i - pos) };
                     if deque[deque.len() - len] == b'0' {
                         continue;
                     }
                     let tcp = tcp_rx.recv().await.unwrap();
                     send(tcp, len, &deque).await;
-                    stat.add(k, t0);
+                    stat.add(1, t0);
+                }
+            }
+        }
+    }
+}
+
+async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
+    let mut tcp_rx = tcps();
+    let mut stat = Stat::new();
+    let mut deque = VecDeque::with_capacity(N);
+    let mut f2: Vec<u128> = vec![0; N];
+    let mut pos = 0;
+    while let Some((t0, bytes)) = rx.recv().await {
+        for &b in bytes.iter() {
+            if deque.len() == N {
+                deque.pop_front();
+            }
+            deque.push_back(b);
+
+            let x = b - b'0';
+
+            f2[pos] = 0;
+            for f in &mut f2 {
+                *f = rem_m2(*f * 10 + x as u128);
+            }
+
+            pos = if pos == N - 1 { 0 } else { pos + 1 };
+
+            for i in 0..deque.len() {
+                if f2[i] == 0 {
+                    let len = if i < pos { pos - i } else { N - (i - pos) };
+                    if deque[deque.len() - len] == b'0' {
+                        continue;
+                    }
+                    let tcp = tcp_rx.recv().await.unwrap();
+                    send(tcp, len, &deque).await;
+                    stat.add(2, t0);
+                }
+            }
+        }
+    }
+}
+
+async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
+    let mut tcp_rx = tcps();
+    assert_eq!(
+        M3.to_string(),
+        "125000000000000064750000000000009507500000000000294357"
+    );
+    let m3s = &*Vec::leak((0u8..10).map(|i| M3 * i).collect());
+
+    let mut stat = Stat::new();
+    let mut deque = VecDeque::with_capacity(N);
+    let mut f3: Vec<U256> = vec![U256::default(); N];
+    let mut pos = 0;
+    while let Some((t0, bytes)) = rx.recv().await {
+        for &b in bytes.iter() {
+            if deque.len() == N {
+                deque.pop_front();
+            }
+            deque.push_back(b);
+
+            let x = b - b'0';
+
+            f3[pos] = U256::default();
+            for f in &mut f3 {
+                *f = *f * 10u8 + x;
+                let idx = m3s.partition_point(|m| &*f >= m);
+                if idx > 0 {
+                    *f -= m3s[idx - 1];
+                }
+            }
+
+            pos = if pos == N - 1 { 0 } else { pos + 1 };
+
+            for i in 0..deque.len() {
+                if f3[i].is_zero() {
+                    let len = if i < pos { pos - i } else { N - (i - pos) };
+                    if deque[deque.len() - len] == b'0' {
+                        continue;
+                    }
+                    let tcp = tcp_rx.recv().await.unwrap();
+                    send(tcp, len, &deque).await;
+                    stat.add(3, t0);
+                }
+            }
+        }
+    }
+}
+
+async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
+    let mut tcp_rx = tcps();
+    let mut stat = Stat::new();
+    let mut deque = VecDeque::with_capacity(N);
+    let mut f4: Vec<U256> = vec![U256::default(); N];
+    let mut pos = 0;
+    while let Some((t0, bytes)) = rx.recv().await {
+        for &b in bytes.iter() {
+            if deque.len() == N {
+                deque.pop_front();
+            }
+            deque.push_back(b);
+
+            let x = b - b'0';
+
+            f4[pos] = U256::default();
+            for f in &mut f4 {
+                *f = (*f * 10u8 + x) & M4_MASK;
+            }
+
+            pos = if pos == N - 1 { 0 } else { pos + 1 };
+
+            for i in 0..deque.len() {
+                if f4[i].is_zero() {
+                    let len = if i < pos { pos - i } else { N - (i - pos) };
+                    if deque[deque.len() - len] == b'0' {
+                        continue;
+                    }
+                    let tcp = tcp_rx.recv().await.unwrap();
+                    send(tcp, len, &deque).await;
+                    stat.add(4, t0);
                 }
             }
         }
@@ -129,7 +239,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    tcp.write_vectored(&iov).await.unwrap();
+    tcp.write_vectored(&iov).unwrap();
 }
 
 struct Stat {
