@@ -21,6 +21,16 @@ impl U256 {
     pub fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
+
+    #[inline]
+    pub const fn mul(self, x: u64) -> Self {
+        let [a0, a1, a2, a3] = self.0;
+        let c0 = a0 as u128 * x as u128;
+        let c1 = a1 as u128 * x as u128 + (c0 >> 64);
+        let c2 = a2 as u128 * x as u128 + (c1 >> 64);
+        let c3 = a3 as u128 * x as u128 + (c2 >> 64);
+        U256([c0 as u64, c1 as u64, c2 as u64, c3 as u64])
+    }
 }
 
 impl Add for U256 {

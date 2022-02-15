@@ -180,9 +180,7 @@ async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
             f3[pos] = U256::ZERO;
             let mut zpos = 0;
             for (i, f) in f3.iter_mut().enumerate() {
-                let mut ff = (*f << 1) + (*f << 3) + x;
-                let idx = m3s.partition_point(|m| &ff >= m);
-                ff -= m3s[idx - 1];
+                let ff = rem_u256_m3((*f << 1) + (*f << 3) + x);
                 *f = ff;
                 if ff.is_zero() {
                     zbuf[zpos] = i as u16;
@@ -326,6 +324,55 @@ fn rem_u128(x: u128, m: u128) -> u128 {
         } else {
             if x >= m * 1 {
                 x - m * 1
+            } else {
+                x
+            }
+        }
+    }
+}
+
+#[inline]
+fn rem_u256_m3(x: U256) -> U256 {
+    const M3S: [U256; 10] = [
+        M3.mul(0),
+        M3.mul(1),
+        M3.mul(2),
+        M3.mul(3),
+        M3.mul(4),
+        M3.mul(5),
+        M3.mul(6),
+        M3.mul(7),
+        M3.mul(8),
+        M3.mul(9),
+    ];
+    if x >= M3S[5] {
+        if x >= M3S[7] {
+            if x >= M3S[9] {
+                x - M3S[9]
+            } else if x >= M3S[8] {
+                x - M3S[8]
+            } else {
+                x - M3S[7]
+            }
+        } else {
+            if x >= M3S[6] {
+                x - M3S[6]
+            } else {
+                x - M3S[5]
+            }
+        }
+    } else {
+        if x >= M3S[2] {
+            if x >= M3S[4] {
+                x - M3S[4]
+            } else if x >= M3S[3] {
+                x - M3S[3]
+            } else {
+                x - M3S[2]
+            }
+        } else {
+            if x >= M3S[1] {
+                x - M3S[1]
             } else {
                 x
             }
