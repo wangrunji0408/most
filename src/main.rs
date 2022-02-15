@@ -17,8 +17,9 @@ const N: usize = 512;
 const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
 const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
-const M4_MASK: U256 = U256([u64::MAX, u64::MAX, u64::MAX >> 14, 0]);
-// M4: 2^178 * 3^0 * 7^0
+const M4_3: u128 = 717897987691852588770249;
+const M4_7: u128 = 1341068619663964900807;
+// M4: 2^75 * 3^50 * 7^25
 
 #[tokio::main]
 async fn main() {
@@ -127,7 +128,7 @@ async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
             f2[pos] = 0;
             let mut zpos = 0;
             for (i, f) in f2.iter_mut().enumerate() {
-                let ff = rem_m2(*f * 10 + x as u128);
+                let ff = rem_u128(*f * 10 + x as u128, M2);
                 *f = ff;
                 if ff == 0 {
                     zbuf[zpos] = i as u16;
@@ -209,7 +210,7 @@ async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     let mut tcp_rx = tcps();
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f4 = [U256::ZERO; N];
+    let mut f4 = [(0u128, 0u128, 0u128); N];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Some((t0, bytes)) = rx.recv().await {
@@ -221,12 +222,14 @@ async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
 
             let x = b - b'0';
 
-            f4[pos] = U256::ZERO;
+            f4[pos] = (0, 0, 0);
             let mut zpos = 0;
-            for (i, f) in f4.iter_mut().enumerate() {
-                let ff = ((*f << 1) + (*f << 3) + x) & M4_MASK;
-                *f = ff;
-                if ff.is_zero() {
+            for (i, (f2, f3, f7)) in f4.iter_mut().enumerate() {
+                let ff2 = (*f2 * 10 + x as u128) & ((1 << 75) - 1);
+                let ff3 = rem_u128(*f3 * 10 + x as u128, M4_3);
+                let ff7 = rem_u128(*f7 * 10 + x as u128, M4_7);
+                (*f2, *f3, *f7) = (ff2, ff3, ff7);
+                if (ff2, ff3, ff7) == (0, 0, 0) {
                     zbuf[zpos] = i as u16;
                     zpos += 1;
                 }
@@ -293,35 +296,36 @@ impl Stat {
     }
 }
 
-fn rem_m2(x: u128) -> u128 {
-    if x >= M2 * 5 {
-        if x >= M2 * 7 {
-            if x >= M2 * 9 {
-                x - M2 * 9
-            } else if x >= M2 * 8 {
-                x - M2 * 8
+#[inline]
+fn rem_u128(x: u128, m: u128) -> u128 {
+    if x >= m * 5 {
+        if x >= m * 7 {
+            if x >= m * 9 {
+                x - m * 9
+            } else if x >= m * 8 {
+                x - m * 8
             } else {
-                x - M2 * 7
+                x - m * 7
             }
         } else {
-            if x >= M2 * 6 {
-                x - M2 * 6
+            if x >= m * 6 {
+                x - m * 6
             } else {
-                x - M2 * 5
+                x - m * 5
             }
         }
     } else {
-        if x >= M2 * 2 {
-            if x >= M2 * 4 {
-                x - M2 * 4
-            } else if x >= M2 * 3 {
-                x - M2 * 3
+        if x >= m * 2 {
+            if x >= m * 4 {
+                x - m * 4
+            } else if x >= m * 3 {
+                x - m * 3
             } else {
-                x - M2 * 2
+                x - m * 2
             }
         } else {
-            if x >= M2 * 1 {
-                x - M2 * 1
+            if x >= m * 1 {
+                x - m * 1
             } else {
                 x
             }
