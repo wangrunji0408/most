@@ -1,4 +1,9 @@
 #![feature(bigint_helper_methods)]
+#![feature(portable_simd)]
+
+mod u128x8;
+
+pub use self::u128x8::U128x8;
 
 // use core::simd::u64x4;
 use std::ops::{Add, BitAnd, Shl, Sub, SubAssign};
