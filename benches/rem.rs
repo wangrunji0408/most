@@ -1,6 +1,6 @@
 use criterion::*;
 use most::U128x8;
-use most::U256;
+use most::U192;
 
 fn u256(c: &mut Criterion) {
     c.bench_function("rem_u128", |b| {
@@ -15,14 +15,14 @@ fn u256(c: &mut Criterion) {
         let mut f = U128x8::splat(0x12345678);
         b.iter(|| f = rem_u128x8(f))
     });
-    c.bench_function("rem_u256", |b| {
-        let mut f = U256::ZERO;
+    c.bench_function("rem_u192", |b| {
+        let mut f = U192::ZERO;
         b.iter_batched(
             || {
-                f = rem_u256_m3((f << 1) + (f << 3) + 1);
+                f = rem_u192_m3((f << 1) + (f << 3) + 1);
                 f
             },
-            |f| rem_u256_m3(f),
+            |f| rem_u192_m3(f),
             BatchSize::SmallInput,
         )
     });
@@ -48,11 +48,11 @@ fn u256(c: &mut Criterion) {
         })
     });
     c.bench_function("task3", |b| {
-        let mut f3 = [U256::ZERO; N];
+        let mut f3 = [U192::ZERO; N];
         let x = 3u8;
         b.iter(|| {
             for f in &mut f3 {
-                let ff = rem_u256_m3((*f << 1) + (*f << 3) + x);
+                let ff = rem_u192_m3((*f << 1) + (*f << 3) + x);
                 *f = ff;
             }
         })
@@ -69,7 +69,7 @@ fn u256(c: &mut Criterion) {
             }
         })
     });
-    c.bench_function("u256_load_store", |b| {
+    c.bench_function("u192_load_store", |b| {
         let mut f3 = [M3; N];
         b.iter(|| {
             for f in &mut f3 {
@@ -100,7 +100,7 @@ criterion_main!(benches);
 
 const N: usize = 512;
 const M2: u128 = 104648257118348370704723099;
-const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
+const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
 const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 1341068619663964900807;
 
@@ -154,8 +154,8 @@ fn rem_u128(x: u128, m: u128) -> u128 {
 }
 
 #[inline]
-fn rem_u256_m3(x: U256) -> U256 {
-    const M3S: [U256; 10] = [
+fn rem_u192_m3(x: U192) -> U192 {
+    const M3S: [U192; 10] = [
         M3.mul(0),
         M3.mul(1),
         M3.mul(2),

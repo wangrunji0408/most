@@ -1,4 +1,4 @@
-use most::U256;
+use most::U192;
 use std::collections::VecDeque;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
@@ -16,7 +16,7 @@ const N: usize = 512;
 // factor: ‘125000000000000064750000000000009507500000000000294357’ is too large
 const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
-const M3: U256 = U256([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d, 0x0]);
+const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
 const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 1341068619663964900807;
 // M4: 2^75 * 3^50 * 7^25
@@ -56,7 +56,7 @@ async fn main() {
 }
 
 fn tcps() -> mpsc::Receiver<TcpStream> {
-    let (tx, rx) = mpsc::channel::<TcpStream>(4);
+    let (tx, rx) = mpsc::channel::<TcpStream>(2);
     tokio::spawn(async move {
         loop {
             let stream = TcpStream::connect("47.95.111.217:10002").unwrap();
@@ -158,14 +158,14 @@ async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     //     M3.to_string(),
     //     "125000000000000064750000000000009507500000000000294357"
     // );
-    let mut m3s = vec![U256::ZERO];
+    let mut m3s = vec![U192::ZERO];
     for i in 1..10 {
         m3s.push(m3s[i - 1] + M3);
     }
 
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f3 = [U256::ZERO; N];
+    let mut f3 = [U192::ZERO; N];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Some((t0, bytes)) = rx.recv().await {
@@ -177,10 +177,10 @@ async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
 
             let x = b - b'0';
 
-            f3[pos] = U256::ZERO;
+            f3[pos] = U192::ZERO;
             let mut zpos = 0;
             for (i, f) in f3.iter_mut().enumerate() {
-                let ff = rem_u256_m3((*f << 1) + (*f << 3) + x);
+                let ff = rem_u192_m3((*f << 1) + (*f << 3) + x);
                 *f = ff;
                 if ff.is_zero() {
                     zbuf[zpos] = i as u16;
@@ -265,7 +265,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    tcp.write_vectored(&iov).unwrap();
+    // tcp.write_vectored(&iov).unwrap();
 }
 
 struct Stat {
@@ -332,8 +332,8 @@ fn rem_u128(x: u128, m: u128) -> u128 {
 }
 
 #[inline]
-fn rem_u256_m3(x: U256) -> U256 {
-    const M3S: [U256; 10] = [
+fn rem_u192_m3(x: U192) -> U192 {
+    const M3S: [U192; 10] = [
         M3.mul(0),
         M3.mul(1),
         M3.mul(2),
