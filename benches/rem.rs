@@ -2,8 +2,11 @@ use criterion::*;
 use most::U128x8;
 use most::U192;
 
-fn u256(c: &mut Criterion) {
-    c.bench_function("rem_u128", |b| {
+criterion_group!(benches, bench);
+criterion_main!(benches);
+
+fn bench(c: &mut Criterion) {
+    c.bench_function("rem_u128_x8", |b| {
         let mut f = [0x12345678_u128; 8];
         b.iter(|| {
             for f in &mut f {
@@ -11,20 +14,35 @@ fn u256(c: &mut Criterion) {
             }
         })
     });
-    c.bench_function("rem_u128_simd", |b| {
+    c.bench_function("rem_u128_simd8", |b| {
         let mut f = U128x8::splat(0x12345678);
         b.iter(|| f = rem_u128x8(f))
     });
-    c.bench_function("rem_u192", |b| {
-        let mut f = U192::ZERO;
-        b.iter_batched(
-            || {
-                f = rem_u192_m3((f << 1) + (f << 3) + 1);
-                f
-            },
-            |f| rem_u192_m3(f),
-            BatchSize::SmallInput,
-        )
+    c.bench_function("rem_u192_x8", |b| {
+        let mut f = [
+            M3,
+            M3.mul(2),
+            M3.mul(3),
+            M3.mul(4),
+            M3.mul(5),
+            M3.mul(6),
+            M3.mul(7),
+            M3.mul(8),
+        ];
+        b.iter(|| {
+            for f in &mut f {
+                *f = rem_u192_m3(*f);
+            }
+        })
+    });
+    c.bench_function("task1", |b| {
+        let mut f1 = [0u64; N];
+        let x = 3u8;
+        b.iter(|| {
+            for f in &mut f1 {
+                *f = (*f * 10 + x as u64) % M1;
+            }
+        })
     });
     c.bench_function("task2", |b| {
         let mut f2 = [0u128; N];
@@ -95,10 +113,8 @@ fn u256(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, u256);
-criterion_main!(benches);
-
 const N: usize = 512;
+const M1: u64 = 20220209192254;
 const M2: u128 = 104648257118348370704723099;
 const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
 const M4_3: u128 = 717897987691852588770249;
