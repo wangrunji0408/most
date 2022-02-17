@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
+use std::simd::u64x8;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -66,7 +67,7 @@ async fn task1(
 ) {
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f1 = [0u64; N];
+    let mut f1 = [u64x8::default(); N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Ok((t0, bytes)) = rx.recv().await {
@@ -78,14 +79,23 @@ async fn task1(
 
             let x = b - b'0';
 
-            f1[pos] = 0;
+            f1[pos / 8][pos % 8] = 0;
             let mut zpos = 0;
             for (i, f) in f1.iter_mut().enumerate() {
-                let ff = (*f * 10 + x as u64) % M1;
+                let ff = *f * u64x8::splat(10) + u64x8::splat(x as u64);
+                let ff = ff.min(ff - u64x8::splat(M1 * 4));
+                let ff = ff.min(ff - u64x8::splat(M1 * 4));
+                let ff = ff.min(ff - u64x8::splat(M1 * 2));
+                let ff = ff.min(ff - u64x8::splat(M1 * 1));
                 *f = ff;
-                if ff == 0 {
-                    zbuf[zpos] = i as u16;
-                    zpos += 1;
+                let zeros = ff.lanes_eq(u64x8::default());
+                if unlikely(zeros.any()) {
+                    for j in 0..8 {
+                        if zeros.test(j) {
+                            zbuf[zpos] = (i * 8 + j) as u16;
+                            zpos += 1;
+                        }
+                    }
                 }
             }
 
@@ -314,7 +324,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    tcp.write_vectored(&iov).unwrap();
+    // tcp.write_vectored(&iov).unwrap();
 }
 
 struct Stat {

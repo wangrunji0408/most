@@ -83,16 +83,11 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for f in &mut f1 {
-                let f1 = (*f * u64x8::splat(10) + u64x8::splat(x as u64));
-                const MM1: u64 = 0x6f5d238e7a7e04bf;
-                const MM2: u64 = 0x1263e262dd3e;
-                let f2 = f1 * u64x8::splat(MM1) >> u64x8::splat(0x2b);
-                let ff = f1 - f2 * u64x8::splat(MM2);
-                // y = x % M1
-                // y = x - ((x * MM1) >> (64 + 0x2b)) * MM2
-                if unlikely(ff.horizontal_and() == 0) {
-                    black_box(());
-                }
+                let ff = *f * u64x8::splat(10) + u64x8::splat(x as u64);
+                let ff = ff.min(ff - u64x8::splat(M1 * 4));
+                let ff = ff.min(ff - u64x8::splat(M1 * 4));
+                let ff = ff.min(ff - u64x8::splat(M1 * 2));
+                let ff = ff.min(ff - u64x8::splat(M1 * 1));
                 *f = ff;
             }
         })
