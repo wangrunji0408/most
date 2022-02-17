@@ -9,6 +9,7 @@ futures = "0.3"
 # num-bigint = "0.4"
 primitive-types = "0.11"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "io-util"] }
+async-channel = "1"
 
 [dev-dependencies]
 criterion = "0.3"

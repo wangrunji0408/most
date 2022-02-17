@@ -8,7 +8,7 @@ use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 
 const N: usize = 512;
 
@@ -27,14 +27,18 @@ const M4_7: u128 = 1341068619663964900807;
 
 #[tokio::main]
 async fn main() {
-    let (tx1, rx1) = mpsc::channel(8);
-    tokio::spawn(task1(rx1));
-    let (tx2, rx2) = mpsc::channel(8);
-    tokio::spawn(task2(rx2));
-    let (tx3, rx3) = mpsc::channel(8);
-    tokio::spawn(task3(rx3));
-    let (tx4, rx4) = mpsc::channel(8);
-    tokio::spawn(task4(rx4));
+    let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(4);
+    tokio::spawn(async move {
+        loop {
+            let stream = TcpStream::connect("47.95.111.217:10002").unwrap();
+            tcp_tx.send(stream).await.unwrap();
+        }
+    });
+    let (tx, _rx) = broadcast::channel(8);
+    tokio::spawn(task1(tx.subscribe(), tcp_rx.clone()));
+    tokio::spawn(task2(tx.subscribe(), tcp_rx.clone()));
+    tokio::spawn(task3(tx.subscribe(), tcp_rx.clone()));
+    tokio::spawn(task4(tx.subscribe(), tcp_rx.clone()));
 
     let mut get_tcp = TcpStream::connect("47.95.111.217:10001").unwrap();
     get_tcp
@@ -52,32 +56,20 @@ async fn main() {
         buf.truncate(len);
         let bytes = Arc::<[u8]>::from(buf);
 
-        tx1.send((t0, bytes.clone())).await.unwrap();
-        tx2.send((t0, bytes.clone())).await.unwrap();
-        tx3.send((t0, bytes.clone())).await.unwrap();
-        tx4.send((t0, bytes)).await.unwrap();
+        tx.send((t0, bytes)).unwrap();
     }
 }
 
-fn tcps() -> mpsc::Receiver<TcpStream> {
-    let (tx, rx) = mpsc::channel::<TcpStream>(2);
-    tokio::spawn(async move {
-        loop {
-            let stream = TcpStream::connect("47.95.111.217:10002").unwrap();
-            tx.send(stream).await.unwrap();
-        }
-    });
-    rx
-}
-
-async fn task1(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
-    let mut tcp_rx = tcps();
+async fn task1(
+    mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
+    tcp_rx: async_channel::Receiver<TcpStream>,
+) {
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
     let mut f1 = [0u64; N];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
-    while let Some((t0, bytes)) = rx.recv().await {
+    while let Ok((t0, bytes)) = rx.recv().await {
         for &b in bytes.iter() {
             if deque.len() == N {
                 deque.pop_front();
@@ -113,14 +105,16 @@ async fn task1(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     }
 }
 
-async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
-    let mut tcp_rx = tcps();
+async fn task2(
+    mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
+    tcp_rx: async_channel::Receiver<TcpStream>,
+) {
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
     let mut f2 = [U128x8::ZERO; N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
-    while let Some((t0, bytes)) = rx.recv().await {
+    while let Ok((t0, bytes)) = rx.recv().await {
         for &b in bytes.iter() {
             if deque.len() == N {
                 deque.pop_front();
@@ -173,8 +167,10 @@ async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     }
 }
 
-async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
-    let mut tcp_rx = tcps();
+async fn task3(
+    mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
+    tcp_rx: async_channel::Receiver<TcpStream>,
+) {
     // assert_eq!(
     //     M3.to_string(),
     //     "125000000000000064750000000000009507500000000000294357"
@@ -189,7 +185,7 @@ async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     let mut f3 = [U192::ZERO; N];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
-    while let Some((t0, bytes)) = rx.recv().await {
+    while let Ok((t0, bytes)) = rx.recv().await {
         for &b in bytes.iter() {
             if deque.len() == N {
                 deque.pop_front();
@@ -225,14 +221,16 @@ async fn task3(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     }
 }
 
-async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
-    let mut tcp_rx = tcps();
+async fn task4(
+    mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
+    tcp_rx: async_channel::Receiver<TcpStream>,
+) {
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
     let mut f4 = [(U128x8::ZERO, U128x8::ZERO, U128x8::ZERO); N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
-    while let Some((t0, bytes)) = rx.recv().await {
+    while let Ok((t0, bytes)) = rx.recv().await {
         for &b in bytes.iter() {
             if deque.len() == N {
                 deque.pop_front();
