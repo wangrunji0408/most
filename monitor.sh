@@ -2,7 +2,7 @@
 
 while true
 do
-ps -ef | grep most | grep -v "grep"
+ps -ef | grep "./target/release/most" | grep -v "grep"
 if [ "$?" -eq 1 ]
 then
 nohup nice -n -20 ./target/release/most >> nohup.out &
