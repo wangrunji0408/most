@@ -3,7 +3,6 @@
 
 use criterion::*;
 use most::{U128x8, U192x8, U192};
-use std::intrinsics::unlikely;
 
 criterion_group!(benches, bench, u128x8, u192x8);
 criterion_main!(benches);
@@ -16,8 +15,7 @@ fn u128x8(c: &mut Criterion) {
     c.bench_function("u128x8/sub", |b| b.iter(|| x = x - y));
     c.bench_function("u128x8/lanes_gt", |b| b.iter(|| m = x.lanes_gt(y)));
     c.bench_function("u128x8/sub_on_ge", |b| b.iter(|| x = x.sub_on_ge(y)));
-    c.bench_function("u128x8/shl", |b| b.iter(|| x = x << 16));
-    c.bench_function("u128x8/mul10", |b| b.iter(|| x = (x << 1) + (x << 3)));
+    c.bench_function("u128x8/mul10", |b| b.iter(|| x = x.mul10_add(1)));
     black_box(m);
 }
 
@@ -129,8 +127,7 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for f in &mut f2 {
-                let ff = (*f << 1) + (*f << 3) + x;
-                let ff = rem_u128x8_m2(ff);
+                let ff = rem_u128x8_m2(f.mul10_add(x as _));
                 *f = ff;
             }
         })
@@ -172,9 +169,9 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for (f2, f3, f7) in &mut f4 {
-                let ff2 = ((*f2 << 1) + (*f2 << 3) + x) & U128x8::splat((1 << 75) - 1);
-                let ff3 = rem_u128x8_m4_3((*f3 << 1) + (*f3 << 3) + x);
-                let ff7 = rem_u128x8_m4_7((*f7 << 1) + (*f7 << 3) + x);
+                let ff2 = f2.mul10_add(x as _) & U128x8::splat((1 << 75) - 1);
+                let ff3 = rem_u128x8_m4_3(f3.mul10_add(x as _));
+                let ff7 = rem_u128x8_m4_7(f7.mul10_add(x as _));
                 (*f2, *f3, *f7) = (ff2, ff3, ff7);
             }
         })

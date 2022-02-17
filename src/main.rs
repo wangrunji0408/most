@@ -149,9 +149,9 @@ async fn task2(
             f2[pos / 8].set(pos % 8, 0);
             let mut zpos = 0;
             for (i, f) in f2.iter_mut().enumerate() {
-                let ff = rem_u128x8_m2((*f << 1) + (*f << 3) + x);
+                let ff = rem_u128x8_m2(f.mul10_add(x as _));
                 *f = ff;
-                let zeros = ff.lanes_eq(U128x8::ZERO);
+                let zeros = ff.is_zero();
                 if unlikely(zeros.any()) {
                     for j in 0..8 {
                         if zeros.test(j) {
@@ -278,11 +278,11 @@ async fn task4(
             f4[pos / 8].2.set(pos % 8, 0);
             let mut zpos = 0;
             for (i, (f2, f3, f7)) in f4.iter_mut().enumerate() {
-                let ff2 = ((*f2 << 1) + (*f2 << 3) + x) & U128x8::splat((1 << 75) - 1);
-                let ff3 = rem_u128x8_m4_3((*f3 << 1) + (*f3 << 3) + x);
-                let ff7 = rem_u128x8_m4_7((*f7 << 1) + (*f7 << 3) + x);
+                let ff2 = f2.mul10_add(x as _) & U128x8::splat((1 << 75) - 1);
+                let ff3 = rem_u128x8_m4_3(f3.mul10_add(x as _));
+                let ff7 = rem_u128x8_m4_7(f7.mul10_add(x as _));
                 (*f2, *f3, *f7) = (ff2, ff3, ff7);
-                let zeros = (ff2 | ff3 | ff7).lanes_eq(U128x8::ZERO);
+                let zeros = (ff2 | ff3 | ff7).is_zero();
                 if unlikely(zeros.any()) {
                     for j in 0..8 {
                         if zeros.test(j) {
