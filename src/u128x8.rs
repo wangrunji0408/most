@@ -75,8 +75,11 @@ impl U128x8 {
 
     #[inline]
     pub fn sub_on_ge(self, other: Self) -> Self {
-        let c = self - other;
         let underflow = other.lanes_gt(self);
+        if underflow.all() {
+            return self;
+        }
+        let c = self - other;
         Self {
             hi: underflow.select(self.hi, c.hi),
             lo: underflow.select(self.lo, c.lo),
