@@ -29,8 +29,7 @@ fn u192x8(c: &mut Criterion) {
     c.bench_function("u192x8/sub", |b| b.iter(|| x = x - y));
     c.bench_function("u192x8/lanes_gt", |b| b.iter(|| m = x.lanes_gt(y)));
     c.bench_function("u192x8/sub_on_ge", |b| b.iter(|| x = x.sub_on_ge(y)));
-    c.bench_function("u192x8/shl", |b| b.iter(|| x = x << 16));
-    c.bench_function("u192x8/mul10", |b| b.iter(|| x = (x << 1) + (x << 3)));
+    c.bench_function("u192x8/mul10", |b| b.iter(|| x = x.mul10_add(1)));
     black_box(m);
 }
 
@@ -151,7 +150,7 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for f in &mut f3 {
-                let ff = rem_u192x8_m3((*f << 1) + (*f << 3) + x);
+                let ff = rem_u192x8_m3(f.mul10_add(x as _));
                 *f = ff;
             }
         })
