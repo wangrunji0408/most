@@ -77,6 +77,16 @@ fn bench(c: &mut Criterion) {
             }
         })
     });
+    c.bench_function("task1_32x2", |b| {
+        let mut f1 = [(0u32, 0u32); N];
+        let x = 3u8;
+        b.iter(|| {
+            for (f1, f2) in &mut f1 {
+                *f1 = (*f1 * 10 + x as u32) % M1_1;
+                *f2 = (*f2 * 10 + x as u32) % M1_2;
+            }
+        })
+    });
     c.bench_function("task1_simd", |b| {
         use std::simd::u64x8;
         let mut f1 = [u64x8::splat(0); N / 8];
@@ -185,6 +195,8 @@ fn bench(c: &mut Criterion) {
 
 const N: usize = 512;
 const M1: u64 = 20220209192254;
+const M1_1: u32 = 2 * 3588061;
+const M1_2: u32 = 23 * 122509;
 const M2: u128 = 104648257118348370704723099;
 const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
 const M4_3: u128 = 717897987691852588770249;
