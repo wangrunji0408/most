@@ -2,8 +2,10 @@
 #![feature(portable_simd)]
 
 mod u128x8;
+mod u192x8;
 
 pub use self::u128x8::U128x8;
+pub use self::u192x8::U192x8;
 
 // use core::simd::u64x4;
 use std::ops::{Add, BitAnd, Shl, Sub, SubAssign};
