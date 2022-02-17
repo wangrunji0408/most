@@ -1,5 +1,9 @@
-use most::U192;
+#![feature(core_intrinsics)]
+#![feature(portable_simd)]
+
+use most::{U128x8, U192};
 use std::collections::VecDeque;
+use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -113,7 +117,7 @@ async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     let mut tcp_rx = tcps();
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f2 = [0u128; N];
+    let mut f2 = [U128x8::ZERO; N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Some((t0, bytes)) = rx.recv().await {
@@ -125,14 +129,31 @@ async fn task2(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
 
             let x = b - b'0';
 
-            f2[pos] = 0;
+            #[inline]
+            fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
+                const MX4: U128x8 = U128x8::splat(M2 * 4);
+                const MX2: U128x8 = U128x8::splat(M2 * 2);
+                const MX1: U128x8 = U128x8::splat(M2 * 1);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX2);
+                x = x.sub_on_ge(MX1);
+                x
+            }
+
+            f2[pos / 8].set(pos % 8, 0);
             let mut zpos = 0;
             for (i, f) in f2.iter_mut().enumerate() {
-                let ff = rem_u128(*f * 10 + x as u128, M2);
+                let ff = rem_u128x8_m2((*f << 1) + (*f << 3) + x);
                 *f = ff;
-                if ff == 0 {
-                    zbuf[zpos] = i as u16;
-                    zpos += 1;
+                let zeros = ff.lanes_eq(U128x8::ZERO);
+                if unlikely(zeros.any()) {
+                    for j in 0..8 {
+                        if zeros.test(j) {
+                            zbuf[zpos] = (i * 8 + j) as u16;
+                            zpos += 1;
+                        }
+                    }
                 }
             }
 
@@ -208,7 +229,7 @@ async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
     let mut tcp_rx = tcps();
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f4 = [(0u128, 0u128, 0u128); N];
+    let mut f4 = [(U128x8::ZERO, U128x8::ZERO, U128x8::ZERO); N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Some((t0, bytes)) = rx.recv().await {
@@ -220,16 +241,46 @@ async fn task4(mut rx: mpsc::Receiver<(Instant, Arc<[u8]>)>) {
 
             let x = b - b'0';
 
-            f4[pos] = (0, 0, 0);
+            #[inline]
+            fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
+                const MX4: U128x8 = U128x8::splat(M4_3 * 4);
+                const MX2: U128x8 = U128x8::splat(M4_3 * 2);
+                const MX1: U128x8 = U128x8::splat(M4_3 * 1);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX2);
+                x = x.sub_on_ge(MX1);
+                x
+            }
+            #[inline]
+            fn rem_u128x8_m4_7(mut x: U128x8) -> U128x8 {
+                const MX4: U128x8 = U128x8::splat(M4_7 * 4);
+                const MX2: U128x8 = U128x8::splat(M4_7 * 2);
+                const MX1: U128x8 = U128x8::splat(M4_7 * 1);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX2);
+                x = x.sub_on_ge(MX1);
+                x
+            }
+
+            f4[pos / 8].0.set(pos % 8, 0);
+            f4[pos / 8].1.set(pos % 8, 0);
+            f4[pos / 8].2.set(pos % 8, 0);
             let mut zpos = 0;
             for (i, (f2, f3, f7)) in f4.iter_mut().enumerate() {
-                let ff2 = (*f2 * 10 + x as u128) & ((1 << 75) - 1);
-                let ff3 = rem_u128(*f3 * 10 + x as u128, M4_3);
-                let ff7 = rem_u128(*f7 * 10 + x as u128, M4_7);
+                let ff2 = ((*f2 << 1) + (*f2 << 3) + x) & U128x8::splat((1 << 75) - 1);
+                let ff3 = rem_u128x8_m4_3((*f3 << 1) + (*f3 << 3) + x);
+                let ff7 = rem_u128x8_m4_7((*f7 << 1) + (*f7 << 3) + x);
                 (*f2, *f3, *f7) = (ff2, ff3, ff7);
-                if (ff2, ff3, ff7) == (0, 0, 0) {
-                    zbuf[zpos] = i as u16;
-                    zpos += 1;
+                let zeros = (ff2 | ff3 | ff7).lanes_eq(U128x8::ZERO);
+                if unlikely(zeros.any()) {
+                    for j in 0..8 {
+                        if zeros.test(j) {
+                            zbuf[zpos] = (i * 8 + j) as u16;
+                            zpos += 1;
+                        }
+                    }
                 }
             }
 

@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, Shl, Sub, SubAssign};
+use std::ops::{Add, BitAnd, BitOr, Shl, Sub, SubAssign};
 use std::simd::{mask64x8, u64x8};
 
 /// Vector of eight u128 values.
@@ -59,6 +59,13 @@ impl U128x8 {
     }
 
     #[inline]
+    pub fn lanes_eq(self, other: Self) -> mask64x8 {
+        let hi_eq = self.hi.lanes_eq(other.hi);
+        let lo_eq = self.lo.lanes_eq(other.lo);
+        hi_eq & lo_eq
+    }
+
+    #[inline]
     pub fn lanes_gt(self, other: Self) -> mask64x8 {
         let hi_eq = self.hi.lanes_eq(other.hi);
         let hi_gt = self.hi.lanes_gt(other.hi);
@@ -74,6 +81,12 @@ impl U128x8 {
             hi: underflow.select(self.hi, c.hi),
             lo: underflow.select(self.lo, c.lo),
         }
+    }
+
+    #[inline]
+    pub fn set(&mut self, index: usize, value: u128) {
+        self.hi[index] = (value >> 64) as _;
+        self.lo[index] = value as _;
     }
 }
 
@@ -134,6 +147,17 @@ impl BitAnd for U128x8 {
 
     #[inline]
     fn bitand(self, rhs: Self) -> Self::Output {
+        let hi = self.hi & rhs.hi;
+        let lo = self.lo & rhs.lo;
+        Self { hi, lo }
+    }
+}
+
+impl BitOr for U128x8 {
+    type Output = U128x8;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
         let hi = self.hi | rhs.hi;
         let lo = self.lo | rhs.lo;
         Self { hi, lo }
