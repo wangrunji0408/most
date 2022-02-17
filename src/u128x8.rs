@@ -69,7 +69,7 @@ impl U128x8 {
     #[inline]
     pub fn sub_on_ge(self, other: Self) -> Self {
         let c = self - other;
-        let underflow = c.lanes_gt(self);
+        let underflow = other.lanes_gt(self);
         Self {
             hi: underflow.select(self.hi, c.hi),
             lo: underflow.select(self.lo, c.lo),
@@ -104,7 +104,7 @@ impl Sub for U128x8 {
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         let lo = self.lo - rhs.lo;
-        let carry: u64x8 = unsafe { std::mem::transmute(lo.lanes_gt(self.lo).to_int()) };
+        let carry: u64x8 = unsafe { std::mem::transmute(rhs.lo.lanes_gt(self.lo).to_int()) };
         let hi = self.hi - rhs.hi + carry;
         Self { hi, lo }
     }

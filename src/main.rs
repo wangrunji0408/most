@@ -265,7 +265,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    // tcp.write_vectored(&iov).unwrap();
+    tcp.write_vectored(&iov).unwrap();
 }
 
 struct Stat {
