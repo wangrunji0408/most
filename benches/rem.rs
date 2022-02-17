@@ -78,12 +78,25 @@ fn bench(c: &mut Criterion) {
         })
     });
     c.bench_function("task1_32x2", |b| {
-        let mut f1 = [(0u32, 0u32); N];
+        let mut f1 = [0u32; N];
+        let mut f2 = [0u32; N];
         let x = 3u8;
         b.iter(|| {
-            for (f1, f2) in &mut f1 {
+            for (f1, f2) in f1.iter_mut().zip(f2.iter_mut()) {
                 *f1 = (*f1 * 10 + x as u32) % M1_1;
                 *f2 = (*f2 * 10 + x as u32) % M1_2;
+            }
+        })
+    });
+    c.bench_function("task1_32x2_simd", |b| {
+        use std::simd::u32x16;
+        let mut f1 = [u32x16::default(); N / 16];
+        let mut f2 = [u32x16::default(); N / 16];
+        let x = 3u8;
+        b.iter(|| {
+            for (f1, f2) in f1.iter_mut().zip(f2.iter_mut()) {
+                *f1 = (*f1 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_1);
+                *f2 = (*f2 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_2);
             }
         })
     });

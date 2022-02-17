@@ -66,9 +66,11 @@ async fn task1(
     mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
     tcp_rx: async_channel::Receiver<TcpStream>,
 ) {
+    use std::simd::u32x16;
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f1 = [(0u32, 0u32); N];
+    let mut f1 = [u32x16::default(); N / 16];
+    let mut f2 = [u32x16::default(); N / 16];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Ok((t0, bytes)) = rx.recv().await {
@@ -80,15 +82,21 @@ async fn task1(
 
             let x = b - b'0';
 
-            f1[pos] = (0, 0);
+            f1[pos / 16][pos % 16] = 0;
+            f2[pos / 16][pos % 16] = 0;
             let mut zpos = 0;
-            for (i, (f1, f2)) in f1.iter_mut().enumerate() {
-                let ff1 = (*f1 * 10 + x as u32) % M1_1;
-                let ff2 = (*f2 * 10 + x as u32) % M1_2;
+            for (i, (f1, f2)) in f1.iter_mut().zip(f2.iter_mut()).enumerate() {
+                let ff1 = (*f1 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_1);
+                let ff2 = (*f2 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_2);
                 (*f1, *f2) = (ff1, ff2);
-                if unlikely((ff1, ff2) == (0, 0)) {
-                    zbuf[zpos] = i as u16;
-                    zpos += 1;
+                let zeros = (ff1 | ff2).lanes_eq(u32x16::default());
+                if unlikely(zeros.any()) {
+                    for j in 0..16 {
+                        if zeros.test(j) {
+                            zbuf[zpos] = (i * 16 + j) as u16;
+                            zpos += 1;
+                        }
+                    }
                 }
             }
 
