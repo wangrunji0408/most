@@ -32,7 +32,12 @@ async fn main() {
     let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(4);
     tokio::spawn(async move {
         loop {
-            let stream = TcpStream::connect("47.95.111.217:10002").unwrap();
+            let stream = tokio::net::TcpStream::connect("47.95.111.217:10002")
+                .await
+                .unwrap();
+            let stream = stream.into_std().unwrap();
+            stream.set_nonblocking(false).unwrap();
+            stream.set_nodelay(true).unwrap();
             tcp_tx.send(stream).await.unwrap();
         }
     });
