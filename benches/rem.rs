@@ -4,7 +4,7 @@
 
 use criterion::*;
 use most::{U128x8, U192x8, U192};
-use std::simd::u64x8;
+use std::simd::{u32x16, u64x8};
 
 criterion_group!(benches, bench, u128x8, u192x8);
 criterion_main!(benches);
@@ -88,14 +88,13 @@ fn bench(c: &mut Criterion) {
         })
     });
     c.bench_function("task1_32x2_simd", |b| {
-        use std::simd::u32x16;
-        let mut f1 = [u32x16::default(); N / 16];
-        let mut f2 = [u32x16::default(); N / 16];
+        let mut f1 = [(u32x16::default(), u32x16::default()); N / 16];
         let x = 3u8;
         b.iter(|| {
-            for (f1, f2) in f1.iter_mut().zip(f2.iter_mut()) {
-                *f1 = (*f1 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_1);
-                *f2 = (*f2 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_2);
+            for (f1, f2) in f1.iter_mut() {
+                let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M1_1);
+                let ff2 = rem_u32x16(*f2 * u32x16::splat(10) + u32x16::splat(x as _), M1_2);
+                (*f1, *f2) = (ff1, ff2);
             }
         })
     });
@@ -104,12 +103,7 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for f in &mut f1 {
-                let ff = *f * u64x8::splat(10) + u64x8::splat(x as u64);
-                let ff = ff.min(ff - u64x8::splat(M1 * 4));
-                let ff = ff.min(ff - u64x8::splat(M1 * 4));
-                let ff = ff.min(ff - u64x8::splat(M1 * 2));
-                let ff = ff.min(ff - u64x8::splat(M1 * 1));
-                *f = ff;
+                *f = rem_u64x8(*f * u64x8::splat(10) + u64x8::splat(x as u64), M1);
             }
         })
     });
@@ -227,12 +221,26 @@ const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 1341068619663964900807;
 
 #[inline]
+fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
+    use std::arch::x86_64::_mm512_min_epu32;
+    use std::mem::transmute;
+    unsafe {
+        let mut x = transmute(x);
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 2)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 1)));
+        u32x16::from(x)
+    }
+}
+
+#[inline]
 fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
     use std::arch::x86_64::_mm512_min_epu64;
     use std::mem::transmute;
     unsafe {
         let mut x = transmute(x);
-        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 8)));
+        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 4)));
         x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 4)));
         x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 2)));
         x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 1)));

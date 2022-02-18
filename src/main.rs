@@ -94,8 +94,7 @@ async fn task1(
     use std::simd::u32x16;
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f1 = [u32x16::default(); N / 16];
-    let mut f2 = [u32x16::default(); N / 16];
+    let mut f1 = [(u32x16::default(), u32x16::default()); N / 16];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Ok((t0, bytes)) = rx.recv().await {
@@ -107,12 +106,26 @@ async fn task1(
 
             let x = b - b'0';
 
-            f1[pos / 16][pos % 16] = 0;
-            f2[pos / 16][pos % 16] = 0;
+            #[inline]
+            fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
+                use std::arch::x86_64::_mm512_min_epu32;
+                use std::mem::transmute;
+                unsafe {
+                    let mut x = transmute(x);
+                    x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+                    x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+                    x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 2)));
+                    x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 1)));
+                    u32x16::from(x)
+                }
+            }
+
+            f1[pos / 16].0[pos % 16] = 0;
+            f1[pos / 16].1[pos % 16] = 0;
             let mut zpos = 0;
-            for (i, (f1, f2)) in f1.iter_mut().zip(f2.iter_mut()).enumerate() {
-                let ff1 = (*f1 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_1);
-                let ff2 = (*f2 * u32x16::splat(10) + u32x16::splat(x as _)) % u32x16::splat(M1_2);
+            for (i, (f1, f2)) in f1.iter_mut().enumerate() {
+                let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M1_1);
+                let ff2 = rem_u32x16(*f2 * u32x16::splat(10) + u32x16::splat(x as _), M1_2);
                 (*f1, *f2) = (ff1, ff2);
                 let zeros = (ff1 | ff2).lanes_eq(u32x16::default());
                 if unlikely(zeros.any()) {
