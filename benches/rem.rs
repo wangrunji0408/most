@@ -213,10 +213,11 @@ const M4_7: u128 = 1341068619663964900807;
 
 #[inline]
 fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
+    const MX8: U128x8 = U128x8::splat(M2 * 8);
     const MX4: U128x8 = U128x8::splat(M2 * 4);
     const MX2: U128x8 = U128x8::splat(M2 * 2);
     const MX1: U128x8 = U128x8::splat(M2 * 1);
-    x = x.sub_on_ge(MX4);
+    x = x.sub_on_ge(MX8);
     x = x.sub_on_ge(MX4);
     x = x.sub_on_ge(MX2);
     x = x.sub_on_ge(MX1);
@@ -225,10 +226,11 @@ fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
 
 #[inline]
 fn rem_u192x8_m3(mut x: U192x8) -> U192x8 {
+    const MX8: U192x8 = U192x8::splat(M3.mul(8).0);
     const MX4: U192x8 = U192x8::splat(M3.mul(4).0);
     const MX2: U192x8 = U192x8::splat(M3.mul(2).0);
     const MX1: U192x8 = U192x8::splat(M3.0);
-    x = x.sub_on_ge(MX4);
+    x = x.sub_on_ge(MX8);
     x = x.sub_on_ge(MX4);
     x = x.sub_on_ge(MX2);
     x = x.sub_on_ge(MX1);
@@ -237,10 +239,11 @@ fn rem_u192x8_m3(mut x: U192x8) -> U192x8 {
 
 #[inline]
 fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
+    const MX8: U128x8 = U128x8::splat(M4_3 * 8);
     const MX4: U128x8 = U128x8::splat(M4_3 * 4);
     const MX2: U128x8 = U128x8::splat(M4_3 * 2);
     const MX1: U128x8 = U128x8::splat(M4_3 * 1);
-    x = x.sub_on_ge(MX4);
+    x = x.sub_on_ge(MX8);
     x = x.sub_on_ge(MX4);
     x = x.sub_on_ge(MX2);
     x = x.sub_on_ge(MX1);
@@ -248,10 +251,11 @@ fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
 }
 #[inline]
 fn rem_u128x8_m4_7(mut x: U128x8) -> U128x8 {
+    const MX8: U128x8 = U128x8::splat(M4_7 * 8);
     const MX4: U128x8 = U128x8::splat(M4_7 * 4);
     const MX2: U128x8 = U128x8::splat(M4_7 * 2);
     const MX1: U128x8 = U128x8::splat(M4_7 * 1);
-    x = x.sub_on_ge(MX4);
+    x = x.sub_on_ge(MX8);
     x = x.sub_on_ge(MX4);
     x = x.sub_on_ge(MX2);
     x = x.sub_on_ge(MX1);

@@ -23,7 +23,7 @@ impl U192x8 {
         let a2 = (a2 << 8) | (a1 >> (64 - 8));
         let a1 = (a1 << 4) | (a0 >> (64 - 4));
         Self {
-            hi: u64x8::splat(a2 & MASK),
+            hi: u64x8::splat(a2),
             mi: u64x8::splat(a1 & MASK),
             lo: u64x8::splat(a0 & MASK),
         }
@@ -62,7 +62,7 @@ impl U192x8 {
         let mi = self.mi * u64x8::splat(10) + (lo >> u64x8::splat(60));
         let hi = self.hi * u64x8::splat(10) + (mi >> u64x8::splat(60));
         Self {
-            hi: hi & u64x8::splat(MASK),
+            hi,
             mi: mi & u64x8::splat(MASK),
             lo: lo & u64x8::splat(MASK),
         }
@@ -78,7 +78,7 @@ impl Add for U192x8 {
         let mi = self.mi + rhs.mi + (lo >> u64x8::splat(60));
         let hi = self.hi + rhs.hi + (mi >> u64x8::splat(60));
         Self {
-            hi: hi & u64x8::splat(MASK),
+            hi,
             mi: mi & u64x8::splat(MASK),
             lo: lo & u64x8::splat(MASK),
         }
@@ -94,7 +94,7 @@ impl Sub for U192x8 {
         let mi = self.mi - rhs.mi - (lo >> u64x8::splat(63));
         let hi = self.hi - rhs.hi - (mi >> u64x8::splat(63));
         Self {
-            hi: hi & u64x8::splat(MASK),
+            hi,
             mi: mi & u64x8::splat(MASK),
             lo: lo & u64x8::splat(MASK),
         }

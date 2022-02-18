@@ -154,10 +154,11 @@ async fn task2(
 
             #[inline]
             fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
+                const MX8: U128x8 = U128x8::splat(M2 * 8);
                 const MX4: U128x8 = U128x8::splat(M2 * 4);
                 const MX2: U128x8 = U128x8::splat(M2 * 2);
                 const MX1: U128x8 = U128x8::splat(M2 * 1);
-                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX8);
                 x = x.sub_on_ge(MX4);
                 x = x.sub_on_ge(MX2);
                 x = x.sub_on_ge(MX1);
@@ -268,10 +269,11 @@ async fn task4(
 
             #[inline]
             fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
+                const MX8: U128x8 = U128x8::splat(M4_3 * 8);
                 const MX4: U128x8 = U128x8::splat(M4_3 * 4);
                 const MX2: U128x8 = U128x8::splat(M4_3 * 2);
                 const MX1: U128x8 = U128x8::splat(M4_3 * 1);
-                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX8);
                 x = x.sub_on_ge(MX4);
                 x = x.sub_on_ge(MX2);
                 x = x.sub_on_ge(MX1);
@@ -279,10 +281,11 @@ async fn task4(
             }
             #[inline]
             fn rem_u128x8_m4_7(mut x: U128x8) -> U128x8 {
+                const MX8: U128x8 = U128x8::splat(M4_7 * 8);
                 const MX4: U128x8 = U128x8::splat(M4_7 * 4);
                 const MX2: U128x8 = U128x8::splat(M4_7 * 2);
                 const MX1: U128x8 = U128x8::splat(M4_7 * 1);
-                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX8);
                 x = x.sub_on_ge(MX4);
                 x = x.sub_on_ge(MX2);
                 x = x.sub_on_ge(MX1);
@@ -290,10 +293,11 @@ async fn task4(
             }
             #[inline]
             fn rem_u128x8_m4_11(mut x: U128x8) -> U128x8 {
+                const MX8: U128x8 = U128x8::splat(M4_11 * 8);
                 const MX4: U128x8 = U128x8::splat(M4_11 * 4);
                 const MX2: U128x8 = U128x8::splat(M4_11 * 2);
                 const MX1: U128x8 = U128x8::splat(M4_11 * 1);
-                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX8);
                 x = x.sub_on_ge(MX4);
                 x = x.sub_on_ge(MX2);
                 x = x.sub_on_ge(MX1);
