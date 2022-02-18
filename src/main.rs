@@ -32,7 +32,7 @@ async fn main() {
     let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(4);
     tokio::spawn(async move {
         loop {
-            let stream = tokio::net::TcpStream::connect("47.95.111.217:10002")
+            let stream = tokio::net::TcpStream::connect("172.1.1.119:10002")
                 .await
                 .unwrap();
             let stream = stream.into_std().unwrap();
@@ -47,9 +47,9 @@ async fn main() {
     tokio::spawn(task3(tx.subscribe(), tcp_rx.clone()));
     tokio::spawn(task4(tx.subscribe(), tcp_rx.clone()));
 
-    let mut get_tcp = TcpStream::connect("47.95.111.217:10001").unwrap();
+    let mut get_tcp = TcpStream::connect("172.1.1.119:10001").unwrap();
     get_tcp
-        .write(b"GET HTTP/1.1\r\nHost: 47.95.111.217:10001\r\n\r\n")
+        .write(b"GET HTTP/1.1\r\nHost: 172.1.1.119:10001\r\n\r\n")
         .unwrap();
     const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
     let mut buf = [0; 1024];
@@ -322,7 +322,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
     } else {
         n0 = &n0[deque.len() - len..];
     }
-    const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 47.95.111.217:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
+    const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 172.1.1.119:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
     let content_length = format!("Content-Length: {}\r\n\r\n", len);
     let iov = [
         IoSlice::new(HEADER.as_bytes()),
