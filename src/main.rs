@@ -1,5 +1,6 @@
 #![feature(core_intrinsics)]
 #![feature(portable_simd)]
+#![feature(stdsimd)]
 
 use most::{U128x8, U192};
 use std::collections::VecDeque;
@@ -7,6 +8,7 @@ use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::process::exit;
+use std::simd::u64x8;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -15,6 +17,7 @@ use tokio::sync::broadcast;
 // M1 = 20220217214410 = 2 * 5 * 431 * 46589 * 100699
 // M2 = 104648257118348370704723119
 // M3 = 125000000000000140750000000000052207500000000006359661
+//    = 500000000000000147 * 500000000000000207 * 500000000000000209
 // M4 = a hidden but fixed integer, whose prime factors include and only include 3, 7 and 11
 const N: usize = 256;
 const M1: u64 = 20220217214410;
@@ -22,6 +25,9 @@ const M1_1: u32 = 431 * 46589;
 const M1_2: u32 = 2 * 5 * 100699;
 const M2: u128 = 104648257118348370704723119;
 const M3: U192 = U192([0x32b716db666f0a6d, 0x4286a9e7b0336f0c, 0x14e1878814c9d]);
+const M3_1: u64 = 500000000000000147;
+const M3_2: u64 = 500000000000000207;
+const M3_3: u64 = 500000000000000209;
 const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 22539340290692258087863249;
 const M4_11: u128 = 672749994932560009201;
@@ -200,18 +206,9 @@ async fn task3(
     mut rx: broadcast::Receiver<(Instant, Arc<[u8]>)>,
     tcp_rx: async_channel::Receiver<TcpStream>,
 ) {
-    // assert_eq!(
-    //     M3.to_string(),
-    //     "125000000000000064750000000000009507500000000000294357"
-    // );
-    let mut m3s = vec![U192::ZERO];
-    for i in 1..10 {
-        m3s.push(m3s[i - 1] + M3);
-    }
-
     let mut stat = Stat::new();
     let mut deque = VecDeque::with_capacity(N);
-    let mut f3 = [U192::ZERO; N];
+    let mut f3 = [(u64x8::default(), u64x8::default(), u64x8::default()); N / 8];
     let mut pos = 0;
     let mut zbuf = [0u16; N];
     while let Ok((t0, bytes)) = rx.recv().await {
@@ -223,14 +220,37 @@ async fn task3(
 
             let x = b - b'0';
 
-            f3[pos] = U192::ZERO;
+            #[inline]
+            fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
+                use std::arch::x86_64::_mm512_min_epu64;
+                use std::mem::transmute;
+                unsafe {
+                    let mut x = transmute(x);
+                    x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 8)));
+                    x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 4)));
+                    x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 2)));
+                    x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 1)));
+                    u64x8::from(x)
+                }
+            }
+
+            f3[pos / 8].0[pos % 8] = 0;
+            f3[pos / 8].1[pos % 8] = 0;
+            f3[pos / 8].2[pos % 8] = 0;
             let mut zpos = 0;
-            for (i, f) in f3.iter_mut().enumerate() {
-                let ff = rem_u192_m3((*f << 1) + (*f << 3) + x);
-                *f = ff;
-                if ff.is_zero() {
-                    zbuf[zpos] = i as u16;
-                    zpos += 1;
+            for (i, (f1, f2, f3)) in f3.iter_mut().enumerate() {
+                let ff1 = rem_u64x8(*f1 * u64x8::splat(10) + u64x8::splat(x as _), M3_1);
+                let ff2 = rem_u64x8(*f2 * u64x8::splat(10) + u64x8::splat(x as _), M3_2);
+                let ff3 = rem_u64x8(*f3 * u64x8::splat(10) + u64x8::splat(x as _), M3_3);
+                (*f1, *f2, *f3) = (ff1, ff2, ff3);
+                let zeros = (ff1 | ff2 | ff3).lanes_eq(u64x8::default());
+                if unlikely(zeros.any()) {
+                    for j in 0..8 {
+                        if zeros.test(j) {
+                            zbuf[zpos] = (i * 8 + j) as u16;
+                            zpos += 1;
+                        }
+                    }
                 }
             }
 

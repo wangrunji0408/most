@@ -1,8 +1,10 @@
 #![feature(portable_simd)]
 #![feature(core_intrinsics)]
+#![feature(stdsimd)]
 
 use criterion::*;
 use most::{U128x8, U192x8, U192};
+use std::simd::u64x8;
 
 criterion_group!(benches, bench, u128x8, u192x8);
 criterion_main!(benches);
@@ -98,7 +100,6 @@ fn bench(c: &mut Criterion) {
         })
     });
     c.bench_function("task1_simd", |b| {
-        use std::simd::u64x8;
         let mut f1 = [u64x8::splat(0); N / 8];
         let x = 3u8;
         b.iter(|| {
@@ -149,6 +150,17 @@ fn bench(c: &mut Criterion) {
             for f in &mut f3 {
                 let ff = rem_u192x8_m3(f.mul10_add(x as _));
                 *f = ff;
+            }
+        })
+    });
+    c.bench_function("task3_64x3_simd", |b| {
+        let mut f3 = [(u64x8::default(), u64x8::default(), u64x8::default()); N / 8];
+        let x = 3u8;
+        b.iter(|| {
+            for (f1, f2, f3) in &mut f3 {
+                *f1 = rem_u64x8(*f1 * u64x8::splat(10) + u64x8::splat(x as _), M3_1);
+                *f2 = rem_u64x8(*f2 * u64x8::splat(10) + u64x8::splat(x as _), M3_2);
+                *f3 = rem_u64x8(*f3 * u64x8::splat(10) + u64x8::splat(x as _), M3_3);
             }
         })
     });
@@ -208,8 +220,31 @@ const M1_1: u32 = 2 * 3588061;
 const M1_2: u32 = 23 * 122509;
 const M2: u128 = 104648257118348370704723099;
 const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
+const M3_1: u64 = 500000000000000147;
+const M3_2: u64 = 500000000000000207;
+const M3_3: u64 = 500000000000000209;
 const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 1341068619663964900807;
+
+#[inline]
+fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
+    use std::arch::x86_64::_mm512_min_epu64;
+    use std::mem::transmute;
+    unsafe {
+        let mut x = transmute(x);
+        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 8)));
+        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 4)));
+        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 2)));
+        x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 1)));
+        u64x8::from(x)
+    }
+    // XXX: use std::cmp::Ord? WTF
+    // x = x.min(x - u64x8::splat(m * 8));
+    // x = x.min(x - u64x8::splat(m * 4));
+    // x = x.min(x - u64x8::splat(m * 2));
+    // x = x.min(x - u64x8::splat(m * 1));
+    // x
+}
 
 #[inline]
 fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
