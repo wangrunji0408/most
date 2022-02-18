@@ -2,7 +2,7 @@
 #![feature(portable_simd)]
 #![feature(stdsimd)]
 
-use most::{U128x8, U192};
+use most::U128x8;
 use std::collections::VecDeque;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
@@ -20,11 +20,9 @@ use tokio::sync::broadcast;
 //    = 500000000000000147 * 500000000000000207 * 500000000000000209
 // M4 = a hidden but fixed integer, whose prime factors include and only include 3, 7 and 11
 const N: usize = 256;
-const M1: u64 = 20220217214410;
 const M1_1: u32 = 431 * 46589;
 const M1_2: u32 = 2 * 5 * 100699;
 const M2: u128 = 104648257118348370704723119;
-const M3: U192 = U192([0x32b716db666f0a6d, 0x4286a9e7b0336f0c, 0x14e1878814c9d]);
 const M3_1: u64 = 500000000000000147;
 const M3_2: u64 = 500000000000000207;
 const M3_3: u64 = 500000000000000209;
@@ -40,6 +38,7 @@ const NO_SEND: bool = true;
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(8);
     tokio::spawn(async move {
         if NO_SEND {
@@ -56,7 +55,7 @@ async fn main() {
             }
             match connect().await {
                 Ok(s) => tcp_tx.send(s).await.unwrap(),
-                Err(e) => eprintln!("{}", e),
+                Err(e) => log::error!("{}", e),
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -147,7 +146,7 @@ async fn task1(
                     continue;
                 }
                 send(&tcp_rx, len, &deque).await;
-                stat.add(1, t0);
+                stat.add(1, len, t0);
             }
         }
     }
@@ -209,7 +208,7 @@ async fn task2(
                     continue;
                 }
                 send(&tcp_rx, len, &deque).await;
-                stat.add(2, t0);
+                stat.add(2, len, t0);
             }
         }
     }
@@ -276,7 +275,7 @@ async fn task3(
                     continue;
                 }
                 send(&tcp_rx, len, &deque).await;
-                stat.add(3, t0);
+                stat.add(3, len, t0);
             }
         }
     }
@@ -366,7 +365,7 @@ async fn task4(
                     continue;
                 }
                 send(&tcp_rx, len, &deque).await;
-                stat.add(4, t0);
+                stat.add(4, len, t0);
             }
         }
     }
@@ -410,99 +409,13 @@ impl Stat {
         }
     }
 
-    fn add(&mut self, k: u8, t0: Instant) {
+    fn add(&mut self, k: u8, len: usize, t0: Instant) {
         // statistics
         let latency = t0.elapsed();
         self.dsum += latency;
         self.count += 1;
         let avg = self.dsum / self.count;
         let nps = self.count as f32 / self.t00.elapsed().as_secs_f32();
-        println!("M{k} lat: {latency:?}\tavg: {avg:?}\tnps: {nps:.3?}");
-    }
-}
-
-#[inline]
-fn rem_u128(x: u128, m: u128) -> u128 {
-    if x >= m * 5 {
-        if x >= m * 7 {
-            if x >= m * 9 {
-                x - m * 9
-            } else if x >= m * 8 {
-                x - m * 8
-            } else {
-                x - m * 7
-            }
-        } else {
-            if x >= m * 6 {
-                x - m * 6
-            } else {
-                x - m * 5
-            }
-        }
-    } else {
-        if x >= m * 2 {
-            if x >= m * 4 {
-                x - m * 4
-            } else if x >= m * 3 {
-                x - m * 3
-            } else {
-                x - m * 2
-            }
-        } else {
-            if x >= m * 1 {
-                x - m * 1
-            } else {
-                x
-            }
-        }
-    }
-}
-
-#[inline]
-fn rem_u192_m3(x: U192) -> U192 {
-    const M3S: [U192; 10] = [
-        M3.mul(0),
-        M3.mul(1),
-        M3.mul(2),
-        M3.mul(3),
-        M3.mul(4),
-        M3.mul(5),
-        M3.mul(6),
-        M3.mul(7),
-        M3.mul(8),
-        M3.mul(9),
-    ];
-    if x >= M3S[5] {
-        if x >= M3S[7] {
-            if x >= M3S[9] {
-                x - M3S[9]
-            } else if x >= M3S[8] {
-                x - M3S[8]
-            } else {
-                x - M3S[7]
-            }
-        } else {
-            if x >= M3S[6] {
-                x - M3S[6]
-            } else {
-                x - M3S[5]
-            }
-        }
-    } else {
-        if x >= M3S[2] {
-            if x >= M3S[4] {
-                x - M3S[4]
-            } else if x >= M3S[3] {
-                x - M3S[3]
-            } else {
-                x - M3S[2]
-            }
-        } else {
-            if x >= M3S[1] {
-                x - M3S[1]
-            } else {
-                x
-            }
-        }
+        log::info!("M{k} {len:3}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
     }
 }
