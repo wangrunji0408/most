@@ -10,22 +10,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
-const N: usize = 512;
-
-// $ factor 20220209192254
-// 20220209192254: 2 23 122509 3588061
-// $ factor 104648257118348370704723099
-// 104648257118348370704723099: 104648257118348370704723099
-// $ factor 125000000000000064750000000000009507500000000000294357
-// factor: ‘125000000000000064750000000000009507500000000000294357’ is too large
-const M1: u64 = 20220209192254;
-const M1_1: u32 = 2 * 3588061;
-const M1_2: u32 = 23 * 122509;
-const M2: u128 = 104648257118348370704723099;
-const M3: U192 = U192([0x32b9c8672a627dd5, 0x959989af0854b90, 0x14e1878814c9d]);
+// N  = 256
+// M1 = 20220217214410 = 2 * 5 * 431 * 46589 * 100699
+// M2 = 104648257118348370704723119
+// M3 = 125000000000000140750000000000052207500000000006359661
+// M4 = a hidden but fixed integer, whose prime factors include and only include 3, 7 and 11
+const N: usize = 256;
+const M1: u64 = 20220217214410;
+const M1_1: u32 = 431 * 46589;
+const M1_2: u32 = 2 * 5 * 100699;
+const M2: u128 = 104648257118348370704723119;
+const M3: U192 = U192([0x32b716db666f0a6d, 0x4286a9e7b0336f0c, 0x14e1878814c9d]);
 const M4_3: u128 = 717897987691852588770249;
-const M4_7: u128 = 1341068619663964900807;
-// M4: 2^75 * 3^50 * 7^25
+const M4_7: u128 = 22539340290692258087863249;
+const M4_11: u128 = 672749994932560009201;
+// M4: 3^50 * 7^30 * 11^20
 
 #[tokio::main]
 async fn main() {
@@ -277,17 +276,28 @@ async fn task4(
                 x = x.sub_on_ge(MX1);
                 x
             }
+            #[inline]
+            fn rem_u128x8_m4_11(mut x: U128x8) -> U128x8 {
+                const MX4: U128x8 = U128x8::splat(M4_11 * 4);
+                const MX2: U128x8 = U128x8::splat(M4_11 * 2);
+                const MX1: U128x8 = U128x8::splat(M4_11 * 1);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX4);
+                x = x.sub_on_ge(MX2);
+                x = x.sub_on_ge(MX1);
+                x
+            }
 
             f4[pos / 8].0.set(pos % 8, 0);
             f4[pos / 8].1.set(pos % 8, 0);
             f4[pos / 8].2.set(pos % 8, 0);
             let mut zpos = 0;
-            for (i, (f2, f3, f7)) in f4.iter_mut().enumerate() {
-                let ff2 = f2.mul10_add(x as _) & U128x8::splat((1 << 75) - 1);
+            for (i, (f3, f7, f11)) in f4.iter_mut().enumerate() {
                 let ff3 = rem_u128x8_m4_3(f3.mul10_add(x as _));
                 let ff7 = rem_u128x8_m4_7(f7.mul10_add(x as _));
-                (*f2, *f3, *f7) = (ff2, ff3, ff7);
-                let zeros = (ff2 | ff3 | ff7).is_zero();
+                let ff11 = rem_u128x8_m4_11(f11.mul10_add(x as _));
+                (*f3, *f7, *f11) = (ff3, ff7, ff11);
+                let zeros = (ff3 | ff7 | ff11).is_zero();
                 if unlikely(zeros.any()) {
                     for j in 0..8 {
                         if zeros.test(j) {
