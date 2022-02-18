@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
+use std::process::exit;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -31,13 +32,18 @@ async fn main() {
     let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(4);
     tokio::spawn(async move {
         loop {
-            let stream = tokio::net::TcpStream::connect("172.1.1.119:10002")
-                .await
-                .unwrap();
-            let stream = stream.into_std().unwrap();
-            stream.set_nonblocking(false).unwrap();
-            stream.set_nodelay(true).unwrap();
-            tcp_tx.send(stream).await.unwrap();
+            async fn connect() -> std::io::Result<TcpStream> {
+                let stream = tokio::net::TcpStream::connect("172.1.1.119:10002").await?;
+                let stream = stream.into_std()?;
+                stream.set_nonblocking(false)?;
+                stream.set_nodelay(true)?;
+                Ok(stream)
+            }
+            match connect().await {
+                Ok(s) => tcp_tx.send(s).await.unwrap(),
+                Err(e) => eprintln!("{}", e),
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
     let (tx, _rx) = broadcast::channel(8);
@@ -112,7 +118,7 @@ async fn task1(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.unwrap();
+                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
                 send(tcp, len, &deque).await;
                 stat.add(1, t0);
             }
@@ -174,7 +180,7 @@ async fn task2(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.unwrap();
+                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
                 send(tcp, len, &deque).await;
                 stat.add(2, t0);
             }
@@ -228,7 +234,7 @@ async fn task3(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.unwrap();
+                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
                 send(tcp, len, &deque).await;
                 stat.add(3, t0);
             }
@@ -316,7 +322,7 @@ async fn task4(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.unwrap();
+                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
                 send(tcp, len, &deque).await;
                 stat.add(4, t0);
             }
@@ -340,7 +346,7 @@ async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
         IoSlice::new(n0),
         IoSlice::new(n1),
     ];
-    tcp.write_vectored(&iov).unwrap();
+    tcp.write_vectored(&iov).map_err(|_| exit(-1)).unwrap();
 }
 
 struct Stat {
