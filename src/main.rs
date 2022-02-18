@@ -28,12 +28,18 @@ const M4_11: u128 = 672749994932560009201;
 // M4: 3^50 * 7^30 * 11^20
 
 // const IN_IP: &str = "47.95.111.217:10001";  // public
-const IN_IP: &str = "172.1.1.119:10001"; // inner
+// const IN_IP: &str = "172.1.1.119:10001"; // inner
+const IN_IP: &str = "127.0.0.1:10001"; // mock
+const NO_SEND: bool = true;
 
 #[tokio::main]
 async fn main() {
     let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(8);
     tokio::spawn(async move {
+        if NO_SEND {
+            std::mem::forget(tcp_tx);
+            return;
+        }
         loop {
             async fn connect() -> std::io::Result<TcpStream> {
                 let stream = tokio::net::TcpStream::connect("172.1.1.119:10002").await?;
@@ -330,6 +336,9 @@ async fn task4(
 }
 
 async fn send(tcp_rx: &async_channel::Receiver<TcpStream>, len: usize, deque: &VecDeque<u8>) {
+    if NO_SEND {
+        return;
+    }
     let mut tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
     let (mut n0, mut n1) = deque.as_slices();
     if n1.len() >= len {
