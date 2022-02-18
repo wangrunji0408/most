@@ -27,9 +27,12 @@ const M4_7: u128 = 22539340290692258087863249;
 const M4_11: u128 = 672749994932560009201;
 // M4: 3^50 * 7^30 * 11^20
 
+// const IN_IP: &str = "47.95.111.217:10001";  // public
+const IN_IP: &str = "172.1.1.119:10001"; // inner
+
 #[tokio::main]
 async fn main() {
-    let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(4);
+    let (tcp_tx, tcp_rx) = async_channel::bounded::<TcpStream>(8);
     tokio::spawn(async move {
         loop {
             async fn connect() -> std::io::Result<TcpStream> {
@@ -52,9 +55,9 @@ async fn main() {
     tokio::spawn(task3(tx.subscribe(), tcp_rx.clone()));
     tokio::spawn(task4(tx.subscribe(), tcp_rx.clone()));
 
-    let mut get_tcp = TcpStream::connect("172.1.1.119:10001").unwrap();
+    let mut get_tcp = TcpStream::connect(IN_IP).unwrap();
     get_tcp
-        .write(b"GET HTTP/1.1\r\nHost: 172.1.1.119:10001\r\n\r\n")
+        .write(format!("GET HTTP/1.1\r\nHost: {IN_IP}\r\n\r\n").as_bytes())
         .unwrap();
     const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
     let mut buf = [0; 1024];
@@ -118,8 +121,7 @@ async fn task1(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
-                send(tcp, len, &deque).await;
+                send(&tcp_rx, len, &deque).await;
                 stat.add(1, t0);
             }
         }
@@ -180,8 +182,7 @@ async fn task2(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
-                send(tcp, len, &deque).await;
+                send(&tcp_rx, len, &deque).await;
                 stat.add(2, t0);
             }
         }
@@ -234,8 +235,7 @@ async fn task3(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
-                send(tcp, len, &deque).await;
+                send(&tcp_rx, len, &deque).await;
                 stat.add(3, t0);
             }
         }
@@ -322,15 +322,15 @@ async fn task4(
                 if i >= deque.len() || deque[deque.len() - len] == b'0' {
                     continue;
                 }
-                let tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
-                send(tcp, len, &deque).await;
+                send(&tcp_rx, len, &deque).await;
                 stat.add(4, t0);
             }
         }
     }
 }
 
-async fn send(mut tcp: TcpStream, len: usize, deque: &VecDeque<u8>) {
+async fn send(tcp_rx: &async_channel::Receiver<TcpStream>, len: usize, deque: &VecDeque<u8>) {
+    let mut tcp = tcp_rx.recv().await.map_err(|_| exit(-1)).unwrap();
     let (mut n0, mut n1) = deque.as_slices();
     if n1.len() >= len {
         n0 = &[];
