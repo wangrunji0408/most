@@ -101,7 +101,7 @@ fn main() {
 }
 
 trait Data: Default {
-    fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize;
+    fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize;
 }
 
 #[derive(Default)]
@@ -110,7 +110,7 @@ struct M1Data {
 }
 
 impl Data for M1Data {
-    fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
+    fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
         #[inline]
         fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
             use std::arch::x86_64::_mm512_min_epu32;
@@ -125,8 +125,8 @@ impl Data for M1Data {
             }
         }
 
-        self.f[pos / 16].0[pos % 16] = 0;
-        self.f[pos / 16].1[pos % 16] = 0;
+        self.f[len % N / 16].0[len % 16] = 0;
+        self.f[len % N / 16].1[len % 16] = 0;
         let mut zpos = 0;
         for (i, (f1, f2)) in self.f.iter_mut().enumerate() {
             let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M1_1);
@@ -135,11 +135,14 @@ impl Data for M1Data {
             let zeros = (ff1 | ff2).lanes_eq(u32x16::default());
             if unlikely(zeros.any()) {
                 for j in 0..16 {
-                    if zeros.test(j) {
+                    if zeros.test(j) && i * 16 + j <= len {
                         zbuf[zpos] = (i * 16 + j) as u16;
                         zpos += 1;
                     }
                 }
+            }
+            if i * 16 > len {
+                break;
             }
         }
         zpos
@@ -152,8 +155,8 @@ struct M2Data {
 }
 
 impl Data for M2Data {
-    fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
-        self.f[pos / 8].set(pos % 8, 0);
+    fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
+        self.f[len % N / 8].set(len % 8, 0);
         let mut zpos = 0;
         for (i, f) in self.f.iter_mut().enumerate() {
             let ff = f.mul10_add(x as _).rem10(M2);
@@ -161,11 +164,14 @@ impl Data for M2Data {
             let zeros = ff.is_zero();
             if unlikely(zeros.any()) {
                 for j in 0..8 {
-                    if zeros.test(j) {
+                    if zeros.test(j) && i * 8 + j <= len {
                         zbuf[zpos] = (i * 8 + j) as u16;
                         zpos += 1;
                     }
                 }
+            }
+            if i * 8 > len {
+                break;
             }
         }
         zpos
@@ -178,7 +184,7 @@ struct M3Data {
 }
 
 impl Data for M3Data {
-    fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
+    fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
         #[inline]
         fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
             use std::arch::x86_64::_mm512_min_epu64;
@@ -193,9 +199,9 @@ impl Data for M3Data {
             }
         }
 
-        self.f[pos / 8].0[pos % 8] = 0;
-        self.f[pos / 8].1[pos % 8] = 0;
-        self.f[pos / 8].2[pos % 8] = 0;
+        self.f[len % N / 8].0[len % 8] = 0;
+        self.f[len % N / 8].1[len % 8] = 0;
+        self.f[len % N / 8].2[len % 8] = 0;
         let mut zpos = 0;
         for (i, (f1, f2, f3)) in self.f.iter_mut().enumerate() {
             let ff1 = rem_u64x8(*f1 * u64x8::splat(10) + u64x8::splat(x as _), M3_1);
@@ -205,11 +211,14 @@ impl Data for M3Data {
             let zeros = (ff1 | ff2 | ff3).lanes_eq(u64x8::default());
             if unlikely(zeros.any()) {
                 for j in 0..8 {
-                    if zeros.test(j) {
+                    if zeros.test(j) && i * 8 + j <= len {
                         zbuf[zpos] = (i * 8 + j) as u16;
                         zpos += 1;
                     }
                 }
+            }
+            if i * 8 > len {
+                break;
             }
         }
         zpos
@@ -222,10 +231,10 @@ struct M4Data {
 }
 
 impl Data for M4Data {
-    fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
-        self.f[pos / 8].0.set(pos % 8, 0);
-        self.f[pos / 8].1.set(pos % 8, 0);
-        self.f[pos / 8].2.set(pos % 8, 0);
+    fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
+        self.f[len % N / 8].0.set(len % 8, 0);
+        self.f[len % N / 8].1.set(len % 8, 0);
+        self.f[len % N / 8].2.set(len % 8, 0);
         let mut zpos = 0;
         for (i, (f3, f7, f11)) in self.f.iter_mut().enumerate() {
             let ff3 = f3.mul10_add(x as _).rem10(M4_3);
@@ -235,11 +244,14 @@ impl Data for M4Data {
             let zeros = (ff3 | ff7 | ff11).is_zero();
             if unlikely(zeros.any()) {
                 for j in 0..8 {
-                    if zeros.test(j) {
+                    if zeros.test(j) && i * 8 + j <= len {
                         zbuf[zpos] = (i * 8 + j) as u16;
                         zpos += 1;
                     }
                 }
+            }
+            if i * 8 > len {
+                break;
             }
         }
         zpos
@@ -249,7 +261,7 @@ impl Data for M4Data {
 struct Task<T: Data> {
     stat: Stat,
     deque: VecDeque<u8>,
-    pos: usize,
+    len: usize,
     f: T,
     k: u8,
 }
@@ -260,14 +272,14 @@ impl<T: Data> Task<T> {
             stat: Stat::new(),
             deque: VecDeque::with_capacity(N),
             f: T::default(),
-            pos: 0,
+            len: 0,
             k,
         }
     }
 
     fn clear(&mut self) {
         self.deque.clear();
-        self.pos = 0;
+        self.len = 0;
         // no need to clear `f`
     }
 
@@ -283,17 +295,14 @@ impl<T: Data> Task<T> {
 
             let x = b - b'0';
 
-            let zpos = self.f.push(x, self.pos, &mut zbuf);
+            let zpos = self.f.push(x, self.len, &mut zbuf);
 
-            self.pos = if self.pos == N - 1 { 0 } else { self.pos + 1 };
+            self.len += 1;
 
             for &i in &zbuf[0..zpos] {
                 let i = i as usize;
-                let len = if i < self.pos {
-                    self.pos - i
-                } else {
-                    N - (i - self.pos)
-                };
+                let pos = self.len % N;
+                let len = if i < pos { pos - i } else { N - (i - pos) };
                 if i >= self.deque.len() || self.deque[self.deque.len() - len] == b'0' {
                     continue;
                 }
