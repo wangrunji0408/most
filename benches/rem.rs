@@ -93,6 +93,16 @@ fn bench(c: &mut Criterion) {
             }
         })
     });
+    c.bench_function("task1_32_simd", |b| {
+        let mut f1 = [u32x16::default(); N / 16];
+        let x = 3u8;
+        b.iter(|| {
+            for f1 in f1.iter_mut() {
+                let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M1_2);
+                *f1 = ff1;
+            }
+        })
+    });
     c.bench_function("task1_simd", |b| {
         let mut f1 = [u64x8::splat(0); N / 8];
         let x = 3u8;

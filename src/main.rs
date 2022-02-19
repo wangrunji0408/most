@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 // M3 = 125000000000000140750000000000052207500000000006359661
 //    = 500000000000000147 * 500000000000000207 * 500000000000000209
 // M4 = a hidden but fixed integer, whose prime factors include and only include 3, 7 and 11
+//    = 3^50 * 7^30 * 11^20
 const N: usize = 256;
 const M1_1: u32 = 431 * 46589;
 const M1_2: u32 = 2 * 5 * 100699;
@@ -26,7 +27,7 @@ const M3_3: u64 = 500000000000000209;
 const M4_3: u128 = 717897987691852588770249;
 const M4_7: u128 = 22539340290692258087863249;
 const M4_11: u128 = 672749994932560009201;
-// M4: 3^50 * 7^30 * 11^20
+const M4_TEST: u32 = 43046721; // 3^16
 
 // const IN_IP: &str = "47.95.111.217:10001";  // public
 // const IN_IP: &str = "172.1.1.119:10001"; // inner
@@ -112,20 +113,6 @@ struct M1Data {
 
 impl Data for M1Data {
     fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
-        #[inline]
-        fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
-            use std::arch::x86_64::_mm512_min_epu32;
-            use std::mem::transmute;
-            unsafe {
-                let mut x = transmute(x);
-                x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
-                x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
-                x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 2)));
-                x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 1)));
-                u32x16::from(x)
-            }
-        }
-
         self.f[len % N / 16][len % 16] = 0;
         let mut zpos = 0;
         for (i, f1) in self.f.iter_mut().enumerate() {
@@ -244,26 +231,26 @@ impl Data for M3Data {
 
 #[derive(Default)]
 struct M4Data {
-    f: [U128x8; N / 8],
+    f: [u32x16; N / 16],
 }
 
 impl Data for M4Data {
     fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
-        self.f[len % N / 8].set(len % 8, 0);
+        self.f[len % N / 16][len % 16] = 0;
         let mut zpos = 0;
-        for (i, f3) in self.f.iter_mut().enumerate() {
-            let ff3 = f3.mul10_add(x as _).rem10(M4_3);
-            *f3 = ff3;
-            let zeros = ff3.is_zero();
+        for (i, f1) in self.f.iter_mut().enumerate() {
+            let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M4_TEST);
+            *f1 = ff1;
+            let zeros = ff1.lanes_eq(u32x16::default());
             if unlikely(zeros.any()) {
-                for j in 0..8 {
-                    if zeros.test(j) && i * 8 + j <= len {
-                        zbuf[zpos] = (i * 8 + j) as u16;
+                for j in 0..16 {
+                    if zeros.test(j) && i * 16 + j <= len {
+                        zbuf[zpos] = (i * 16 + j) as u16;
                         zpos += 1;
                     }
                 }
             }
-            if i * 8 > len {
+            if i * 16 > len {
                 break;
             }
         }
@@ -271,13 +258,15 @@ impl Data for M4Data {
     }
 
     fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+        let mut f1 = 0;
         let mut f2 = 0;
         let mut f3 = 0;
         for x in digits {
+            f1 = rem_u128(f1 * 10 + x as u128, M4_3);
             f2 = rem_u128(f2 * 10 + x as u128, M4_7);
             f3 = rem_u128(f3 * 10 + x as u128, M4_11);
         }
-        f2 == 0 && f3 == 0
+        f1 == 0 && f2 == 0 && f3 == 0
     }
 }
 
@@ -333,6 +322,7 @@ impl<T: Data> Task<T> {
                     .f
                     .check(self.deque.range(self.deque.len() - len..).map(|b| b - b'0'))
                 {
+                    log::warn!("M{} false positive", self.k);
                     continue;
                 }
                 // tailing 0s
@@ -407,6 +397,20 @@ impl Stat {
         let avg = self.dsum / self.count;
         let nps = self.count as f32 / self.t00.elapsed().as_secs_f32();
         log::info!("M{k} {len:3}+{zeros}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
+    }
+}
+
+#[inline]
+fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
+    use std::arch::x86_64::_mm512_min_epu32;
+    use std::mem::transmute;
+    unsafe {
+        let mut x = transmute(x);
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 2)));
+        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 1)));
+        u32x16::from(x)
     }
 }
 
