@@ -73,15 +73,47 @@ fn main() {
     let mut task4 = Task::<M4Data>::new(4);
 
     let mut buf = [0; 1024];
+    let mut bytes = &buf[..0];
+    let mut t0 = Instant::now();
     loop {
-        let len = get_tcp.read(&mut buf).unwrap();
-        let t0 = Instant::now();
-        let bytes = &buf[..len];
-
-        task1.append(bytes, t0, &tcp_rx);
-        task3.append(bytes, t0, &tcp_rx);
-        task2.append(bytes, t0, &tcp_rx);
-        task4.append(bytes, t0, &tcp_rx);
+        if bytes.is_empty() {
+            let len = get_tcp.read(&mut buf).unwrap();
+            t0 = Instant::now();
+            bytes = &buf[..len];
+        }
+        if let Some(idx) = task1.append(bytes, t0, &tcp_rx) {
+            bytes = &bytes[idx..];
+            task1.clear();
+            task2.clear();
+            task3.clear();
+            task4.clear();
+            continue;
+        }
+        if let Some(idx) = task3.append(bytes, t0, &tcp_rx) {
+            bytes = &bytes[idx..];
+            task1.clear();
+            task2.clear();
+            task3.clear();
+            task4.clear();
+            continue;
+        }
+        if let Some(idx) = task2.append(bytes, t0, &tcp_rx) {
+            bytes = &bytes[idx..];
+            task1.clear();
+            task2.clear();
+            task3.clear();
+            task4.clear();
+            continue;
+        }
+        if let Some(idx) = task4.append(bytes, t0, &tcp_rx) {
+            bytes = &bytes[idx..];
+            task1.clear();
+            task2.clear();
+            task3.clear();
+            task4.clear();
+            continue;
+        }
+        bytes = &buf[..0];
     }
 }
 
@@ -250,9 +282,22 @@ impl<T: Data> Task<T> {
         }
     }
 
-    fn append(&mut self, bytes: &[u8], t0: Instant, tcp_rx: &mpsc::Receiver<TcpStream>) {
+    fn clear(&mut self) {
+        self.deque.clear();
+        self.pos = 0;
+        // no need to clear `f`
+    }
+
+    /// If found return the end index.
+    fn append(
+        &mut self,
+        bytes: &[u8],
+        t0: Instant,
+        tcp_rx: &mpsc::Receiver<TcpStream>,
+    ) -> Option<usize> {
         let mut zbuf = [unsafe { std::mem::MaybeUninit::uninit().assume_init() }; N];
-        for &b in bytes.iter() {
+        let mut iter = bytes.iter().enumerate();
+        while let Some((mut idx, &b)) = iter.next() {
             if self.deque.len() == N {
                 self.deque.pop_front();
             }
@@ -266,7 +311,7 @@ impl<T: Data> Task<T> {
 
             for &i in &zbuf[0..zpos] {
                 let i = i as usize;
-                let len = if i < self.pos {
+                let mut len = if i < self.pos {
                     self.pos - i
                 } else {
                     N - (i - self.pos)
@@ -276,8 +321,25 @@ impl<T: Data> Task<T> {
                 }
                 send(&tcp_rx, len, &self.deque);
                 self.stat.add(self.k, len, t0);
+                // tailing 0s
+                while let Some((_, &b'0')) = iter.next() {
+                    len += 1;
+                    if len > N {
+                        break;
+                    }
+                    idx += 1;
+                    if self.deque.len() == N {
+                        self.deque.pop_front();
+                    }
+                    self.deque.push_back(b'0');
+
+                    send(&tcp_rx, len, &self.deque);
+                    self.stat.add(self.k, len, t0);
+                }
+                return Some(idx);
             }
         }
+        None
     }
 }
 
