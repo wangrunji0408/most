@@ -187,6 +187,32 @@ fn bench(c: &mut Criterion) {
             }
         })
     });
+    c.bench_function("task3_check", |b| {
+        let digits: Vec<u8> = (0..N).map(|i| i as u8 % 10).collect();
+        b.iter(|| {
+            let mut f2 = 0;
+            let mut f3 = 0;
+            for &x in &digits {
+                f2 = (f2 * 10 + x as u64) % M3_2;
+                f3 = (f3 * 10 + x as u64) % M3_3;
+            }
+            f2 == 0 && f3 == 0
+        })
+    });
+    c.bench_function("task4_check", |b| {
+        let digits: Vec<u8> = (0..N).map(|i| i as u8 % 10).collect();
+        b.iter(|| {
+            let mut f1 = 0;
+            let mut f2 = 0;
+            let mut f3 = 0;
+            for &x in &digits {
+                f1 = rem_u128(f1 * 10 + x as u128, M4_3);
+                f2 = rem_u128(f2 * 10 + x as u128, M4_7);
+                f3 = rem_u128(f3 * 10 + x as u128, M4_11);
+            }
+            f1 == 0 && f2 == 0 && f3 == 0
+        })
+    });
     c.bench_function("u192_load_store", |b| {
         let mut f3 = [M3; N];
         b.iter(|| {
@@ -213,7 +239,7 @@ fn bench(c: &mut Criterion) {
     });
 }
 
-const N: usize = 512;
+const N: usize = 256;
 const M1: u64 = 20220209192254;
 const M1_1: u32 = 2 * 3588061;
 const M1_2: u32 = 23 * 122509;

@@ -73,6 +73,14 @@ fn main() {
             task4.clear();
             continue;
         }
+        if let Some(idx) = task4.append(bytes, t0, &mut send_tcp) {
+            bytes = &bytes[idx..];
+            task1.clear();
+            task2.clear();
+            task3.clear();
+            task4.clear();
+            continue;
+        }
         if let Some(idx) = task3.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
@@ -82,14 +90,6 @@ fn main() {
             continue;
         }
         if let Some(idx) = task2.append(bytes, t0, &mut send_tcp) {
-            bytes = &bytes[idx..];
-            task1.clear();
-            task2.clear();
-            task3.clear();
-            task4.clear();
-            continue;
-        }
-        if let Some(idx) = task4.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -218,14 +218,16 @@ impl Data for M3Data {
         zpos
     }
 
-    fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
-        let mut f2 = 0;
-        let mut f3 = 0;
-        for x in digits {
-            f2 = (f2 * 10 + x as u64) % M3_2;
-            f3 = (f3 * 10 + x as u64) % M3_3;
-        }
-        f2 == 0 && f3 == 0
+    fn check(&mut self, _digits: impl Iterator<Item = u8>) -> bool {
+        true
+        // consume < 1us, no false positive observed, disable it
+        // let mut f2 = 0;
+        // let mut f3 = 0;
+        // for x in digits {
+        //     f2 = (f2 * 10 + x as u64) % M3_2;
+        //     f3 = (f3 * 10 + x as u64) % M3_3;
+        // }
+        // f2 == 0 && f3 == 0
     }
 }
 
@@ -258,6 +260,7 @@ impl Data for M4Data {
     }
 
     fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+        // consume < 2.5us
         let mut f1 = 0;
         let mut f2 = 0;
         let mut f3 = 0;
