@@ -7,9 +7,7 @@ use std::collections::VecDeque;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
-use std::process::exit;
 use std::simd::{u32x16, u64x8};
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 // N  = 256
@@ -32,31 +30,16 @@ const M4_11: u128 = 672749994932560009201;
 
 // const IN_IP: &str = "47.95.111.217:10001";  // public
 // const IN_IP: &str = "172.1.1.119:10001"; // inner
+// const OUT_IP: &str = "172.1.1.119:10002"; // inner
 const IN_IP: &str = "127.0.0.1:10001"; // mock
-const NO_SEND: bool = true;
+const OUT_IP: &str = "127.0.0.1:10002"; // mock
 
 fn main() {
     env_logger::init();
-    let (tcp_tx, tcp_rx) = mpsc::sync_channel::<TcpStream>(8);
-    std::thread::spawn(|| {
-        if NO_SEND {
-            std::mem::forget(tcp_tx);
-            return;
-        }
-        loop {
-            fn connect() -> std::io::Result<TcpStream> {
-                let stream = TcpStream::connect("172.1.1.119:10002")?;
-                stream.set_nonblocking(false)?;
-                stream.set_nodelay(true)?;
-                Ok(stream)
-            }
-            match connect() {
-                Ok(s) => tcp_tx.send(s).unwrap(),
-                Err(e) => log::error!("{}", e),
-            }
-            std::thread::sleep(Duration::from_secs(1));
-        }
-    });
+
+    let mut send_tcp = TcpStream::connect(OUT_IP).unwrap();
+    send_tcp.set_nonblocking(true).unwrap();
+    send_tcp.set_nodelay(true).unwrap();
 
     let mut get_tcp = TcpStream::connect(IN_IP).unwrap();
     get_tcp
@@ -81,7 +64,7 @@ fn main() {
             t0 = Instant::now();
             bytes = &buf[..len];
         }
-        if let Some(idx) = task1.append(bytes, t0, &tcp_rx) {
+        if let Some(idx) = task1.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -89,7 +72,7 @@ fn main() {
             task4.clear();
             continue;
         }
-        if let Some(idx) = task3.append(bytes, t0, &tcp_rx) {
+        if let Some(idx) = task3.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -97,7 +80,7 @@ fn main() {
             task4.clear();
             continue;
         }
-        if let Some(idx) = task2.append(bytes, t0, &tcp_rx) {
+        if let Some(idx) = task2.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -105,7 +88,7 @@ fn main() {
             task4.clear();
             continue;
         }
-        if let Some(idx) = task4.append(bytes, t0, &tcp_rx) {
+        if let Some(idx) = task4.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -289,15 +272,10 @@ impl<T: Data> Task<T> {
     }
 
     /// If found return the end index.
-    fn append(
-        &mut self,
-        bytes: &[u8],
-        t0: Instant,
-        tcp_rx: &mpsc::Receiver<TcpStream>,
-    ) -> Option<usize> {
+    fn append(&mut self, bytes: &[u8], t0: Instant, tcp: &mut TcpStream) -> Option<usize> {
         let mut zbuf = [unsafe { std::mem::MaybeUninit::uninit().assume_init() }; N];
         let mut iter = bytes.iter().enumerate();
-        while let Some((mut idx, &b)) = iter.next() {
+        while let Some((idx, &b)) = iter.next() {
             if self.deque.len() == N {
                 self.deque.pop_front();
             }
@@ -311,7 +289,7 @@ impl<T: Data> Task<T> {
 
             for &i in &zbuf[0..zpos] {
                 let i = i as usize;
-                let mut len = if i < self.pos {
+                let len = if i < self.pos {
                     self.pos - i
                 } else {
                     N - (i - self.pos)
@@ -319,35 +297,24 @@ impl<T: Data> Task<T> {
                 if i >= self.deque.len() || self.deque[self.deque.len() - len] == b'0' {
                     continue;
                 }
-                send(&tcp_rx, len, &self.deque);
-                self.stat.add(self.k, len, t0);
                 // tailing 0s
+                let mut zeros = 0;
                 while let Some((_, &b'0')) = iter.next() {
-                    len += 1;
-                    if len > N {
+                    if len + zeros == N {
                         break;
                     }
-                    idx += 1;
-                    if self.deque.len() == N {
-                        self.deque.pop_front();
-                    }
-                    self.deque.push_back(b'0');
-
-                    send(&tcp_rx, len, &self.deque);
-                    self.stat.add(self.k, len, t0);
+                    zeros += 1;
                 }
-                return Some(idx);
+                send(tcp, len, zeros, &self.deque);
+                self.stat.add(self.k, len, zeros, t0);
+                return Some(idx + zeros);
             }
         }
         None
     }
 }
 
-fn send(tcp_rx: &mpsc::Receiver<TcpStream>, len: usize, deque: &VecDeque<u8>) {
-    if NO_SEND {
-        return;
-    }
-    let mut tcp = tcp_rx.recv().map_err(|_| exit(-1)).unwrap();
+fn send(tcp: &mut TcpStream, len: usize, zeros: usize, deque: &VecDeque<u8>) {
     let (mut n0, mut n1) = deque.as_slices();
     if n1.len() >= len {
         n0 = &[];
@@ -355,15 +322,28 @@ fn send(tcp_rx: &mpsc::Receiver<TcpStream>, len: usize, deque: &VecDeque<u8>) {
     } else {
         n0 = &n0[deque.len() - len..];
     }
-    const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 172.1.1.119:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n";
-    let content_length = format!("Content-Length: {}\r\n\r\n", len);
-    let iov = [
-        IoSlice::new(HEADER.as_bytes()),
-        IoSlice::new(content_length.as_bytes()),
-        IoSlice::new(n0),
-        IoSlice::new(n1),
-    ];
-    tcp.write_vectored(&iov).map_err(|_| exit(-1)).unwrap();
+    const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 172.1.1.119:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
+    let mut len_strs = vec![];
+    for i in 0..=zeros {
+        len_strs.push(format!("{}\r\n\r\n", len + i));
+    }
+    let mut iov = vec![];
+    for i in 0..=zeros {
+        iov.extend([
+            IoSlice::new(HEADER.as_bytes()),
+            IoSlice::new(len_strs[i].as_bytes()),
+            IoSlice::new(n0),
+            IoSlice::new(n1),
+            IoSlice::new(&b"0000000000"[..i]),
+        ]);
+    }
+    match tcp.write_vectored(&iov) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            log::warn!("TCP send would block, ignore");
+        }
+        Err(e) => panic!("{}", e),
+    }
 }
 
 struct Stat {
@@ -381,13 +361,13 @@ impl Stat {
         }
     }
 
-    fn add(&mut self, k: u8, len: usize, t0: Instant) {
+    fn add(&mut self, k: u8, len: usize, zeros: usize, t0: Instant) {
         // statistics
         let latency = t0.elapsed();
         self.dsum += latency;
         self.count += 1;
         let avg = self.dsum / self.count;
         let nps = self.count as f32 / self.t00.elapsed().as_secs_f32();
-        log::info!("M{k} {len:3}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
+        log::info!("M{k} {len:3}+{zeros}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
     }
 }
