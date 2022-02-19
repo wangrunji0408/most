@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, BitOr, Sub};
+use std::ops::{BitAnd, BitOr};
 use std::simd::{mask64x8, u64x8};
 
 /// Vector of eight u128 values.
@@ -29,23 +29,18 @@ impl U128x8 {
     }
 
     #[inline]
-    pub fn lanes_gt(self, other: Self) -> mask64x8 {
-        let hi_eq = self.hi.lanes_eq(other.hi);
-        let hi_gt = self.hi.lanes_gt(other.hi);
-        let lo_gt = self.lo.lanes_gt(other.lo);
-        hi_eq.select_mask(lo_gt, hi_gt)
-    }
-
-    #[inline]
     pub fn sub_on_ge(self, other: Self) -> Self {
-        let underflow = other.lanes_gt(self);
-        if underflow.all() {
-            return self;
-        }
-        let c = self - other;
+        let mut c_lo = self.lo - other.lo;
+        let mut c_hi = self.hi - other.hi;
+        let hi_eq = c_hi.lanes_eq(u64x8::default());
+        let hi_ge = (c_hi & u64x8::splat(1 << 63)).lanes_eq(u64x8::default());
+        let lo_ge = (c_lo >> u64x8::splat(63)).lanes_eq(u64x8::default());
+        let ge = hi_eq.select_mask(lo_ge, hi_ge);
+        c_hi = c_hi - (c_lo >> u64x8::splat(63));
+        c_lo = c_lo & u64x8::splat(MASK);
         Self {
-            hi: underflow.select(self.hi, c.hi),
-            lo: underflow.select(self.lo, c.lo),
+            hi: ge.select(c_hi, self.hi),
+            lo: ge.select(c_lo, self.lo),
         }
     }
 
@@ -64,33 +59,14 @@ impl U128x8 {
             lo: lo & u64x8::splat(MASK),
         }
     }
-}
-
-impl Add for U128x8 {
-    type Output = U128x8;
 
     #[inline]
-    fn add(self, rhs: Self) -> Self::Output {
-        let lo = self.lo + rhs.lo;
-        let hi = self.hi + rhs.hi + (lo >> u64x8::splat(60));
-        Self {
-            hi,
-            lo: lo & u64x8::splat(MASK),
-        }
-    }
-}
-
-impl Sub for U128x8 {
-    type Output = U128x8;
-
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        let lo = self.lo - rhs.lo;
-        let hi = self.hi - rhs.hi - (lo >> u64x8::splat(63));
-        Self {
-            hi,
-            lo: lo & u64x8::splat(MASK),
-        }
+    pub fn rem10(mut self, m: u128) -> Self {
+        self = self.sub_on_ge(U128x8::splat(m * 4));
+        self = self.sub_on_ge(U128x8::splat(m * 4));
+        self = self.sub_on_ge(U128x8::splat(m * 2));
+        self = self.sub_on_ge(U128x8::splat(m * 1));
+        self
     }
 }
 

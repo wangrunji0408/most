@@ -12,13 +12,8 @@ criterion_main!(benches);
 fn u128x8(c: &mut Criterion) {
     let mut x = U128x8::ZERO;
     let y = U128x8::MAX;
-    let mut m = Default::default();
-    c.bench_function("u128x8/add", |b| b.iter(|| x = x + y));
-    c.bench_function("u128x8/sub", |b| b.iter(|| x = x - y));
-    c.bench_function("u128x8/lanes_gt", |b| b.iter(|| m = x.lanes_gt(y)));
     c.bench_function("u128x8/sub_on_ge", |b| b.iter(|| x = x.sub_on_ge(y)));
     c.bench_function("u128x8/mul10", |b| b.iter(|| x = x.mul10_add(1)));
-    black_box(m);
 }
 
 fn u192x8(c: &mut Criterion) {
@@ -44,7 +39,7 @@ fn bench(c: &mut Criterion) {
     });
     c.bench_function("rem_u128_simd8", |b| {
         let mut f = U128x8::splat(0x12345678);
-        b.iter(|| f = rem_u128x8_m2(f))
+        b.iter(|| f = f.rem10(M2))
     });
     c.bench_function("rem_u192_x8", |b| {
         let mut f = [
@@ -122,7 +117,7 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for f in &mut f2 {
-                let ff = rem_u128x8_m2(f.mul10_add(x as _));
+                let ff = f.mul10_add(x as _).rem10(M2);
                 *f = ff;
             }
         })
@@ -163,7 +158,7 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for (f2, f3, f7) in &mut f4 {
-                let ff2 = (*f2 * 10 + x as u128) & ((1 << 75) - 1);
+                let ff2 = rem_u128(*f2 * 10 + x as u128, M4_11);
                 let ff3 = rem_u128(*f3 * 10 + x as u128, M4_3);
                 let ff7 = rem_u128(*f7 * 10 + x as u128, M4_7);
                 (*f2, *f3, *f7) = (ff2, ff3, ff7);
@@ -175,9 +170,9 @@ fn bench(c: &mut Criterion) {
         let x = 3u8;
         b.iter(|| {
             for (f2, f3, f7) in &mut f4 {
-                let ff2 = f2.mul10_add(x as _) & U128x8::splat((1 << 75) - 1);
-                let ff3 = rem_u128x8_m4_3(f3.mul10_add(x as _));
-                let ff7 = rem_u128x8_m4_7(f7.mul10_add(x as _));
+                let ff2 = f2.mul10_add(x as _).rem10(M4_11);
+                let ff3 = f3.mul10_add(x as _).rem10(M4_3);
+                let ff7 = f7.mul10_add(x as _).rem10(M4_7);
                 (*f2, *f3, *f7) = (ff2, ff3, ff7);
             }
         })
@@ -218,7 +213,8 @@ const M3_1: u64 = 500000000000000147;
 const M3_2: u64 = 500000000000000207;
 const M3_3: u64 = 500000000000000209;
 const M4_3: u128 = 717897987691852588770249;
-const M4_7: u128 = 1341068619663964900807;
+const M4_7: u128 = 22539340290692258087863249;
+const M4_11: u128 = 672749994932560009201;
 
 #[inline]
 fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
@@ -255,49 +251,11 @@ fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
 }
 
 #[inline]
-fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
-    const MX8: U128x8 = U128x8::splat(M2 * 8);
-    const MX4: U128x8 = U128x8::splat(M2 * 4);
-    const MX2: U128x8 = U128x8::splat(M2 * 2);
-    const MX1: U128x8 = U128x8::splat(M2 * 1);
-    x = x.sub_on_ge(MX8);
-    x = x.sub_on_ge(MX4);
-    x = x.sub_on_ge(MX2);
-    x = x.sub_on_ge(MX1);
-    x
-}
-
-#[inline]
 fn rem_u192x8_m3(mut x: U192x8) -> U192x8 {
     const MX8: U192x8 = U192x8::splat(M3.mul(8).0);
     const MX4: U192x8 = U192x8::splat(M3.mul(4).0);
     const MX2: U192x8 = U192x8::splat(M3.mul(2).0);
     const MX1: U192x8 = U192x8::splat(M3.0);
-    x = x.sub_on_ge(MX8);
-    x = x.sub_on_ge(MX4);
-    x = x.sub_on_ge(MX2);
-    x = x.sub_on_ge(MX1);
-    x
-}
-
-#[inline]
-fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
-    const MX8: U128x8 = U128x8::splat(M4_3 * 8);
-    const MX4: U128x8 = U128x8::splat(M4_3 * 4);
-    const MX2: U128x8 = U128x8::splat(M4_3 * 2);
-    const MX1: U128x8 = U128x8::splat(M4_3 * 1);
-    x = x.sub_on_ge(MX8);
-    x = x.sub_on_ge(MX4);
-    x = x.sub_on_ge(MX2);
-    x = x.sub_on_ge(MX1);
-    x
-}
-#[inline]
-fn rem_u128x8_m4_7(mut x: U128x8) -> U128x8 {
-    const MX8: U128x8 = U128x8::splat(M4_7 * 8);
-    const MX4: U128x8 = U128x8::splat(M4_7 * 4);
-    const MX2: U128x8 = U128x8::splat(M4_7 * 2);
-    const MX1: U128x8 = U128x8::splat(M4_7 * 1);
     x = x.sub_on_ge(MX8);
     x = x.sub_on_ge(MX4);
     x = x.sub_on_ge(MX2);

@@ -138,23 +138,10 @@ struct M2Data {
 
 impl Data for M2Data {
     fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
-        #[inline]
-        fn rem_u128x8_m2(mut x: U128x8) -> U128x8 {
-            const MX8: U128x8 = U128x8::splat(M2 * 8);
-            const MX4: U128x8 = U128x8::splat(M2 * 4);
-            const MX2: U128x8 = U128x8::splat(M2 * 2);
-            const MX1: U128x8 = U128x8::splat(M2 * 1);
-            x = x.sub_on_ge(MX8);
-            x = x.sub_on_ge(MX4);
-            x = x.sub_on_ge(MX2);
-            x = x.sub_on_ge(MX1);
-            x
-        }
-
         self.f[pos / 8].set(pos % 8, 0);
         let mut zpos = 0;
         for (i, f) in self.f.iter_mut().enumerate() {
-            let ff = rem_u128x8_m2(f.mul10_add(x as _));
+            let ff = f.mul10_add(x as _).rem10(M2);
             *f = ff;
             let zeros = ff.is_zero();
             if unlikely(zeros.any()) {
@@ -221,51 +208,14 @@ struct M4Data {
 
 impl Data for M4Data {
     fn push(&mut self, x: u8, pos: usize, zbuf: &mut [u16]) -> usize {
-        #[inline]
-        fn rem_u128x8_m4_3(mut x: U128x8) -> U128x8 {
-            const MX8: U128x8 = U128x8::splat(M4_3 * 8);
-            const MX4: U128x8 = U128x8::splat(M4_3 * 4);
-            const MX2: U128x8 = U128x8::splat(M4_3 * 2);
-            const MX1: U128x8 = U128x8::splat(M4_3 * 1);
-            x = x.sub_on_ge(MX8);
-            x = x.sub_on_ge(MX4);
-            x = x.sub_on_ge(MX2);
-            x = x.sub_on_ge(MX1);
-            x
-        }
-        #[inline]
-        fn rem_u128x8_m4_7(mut x: U128x8) -> U128x8 {
-            const MX8: U128x8 = U128x8::splat(M4_7 * 8);
-            const MX4: U128x8 = U128x8::splat(M4_7 * 4);
-            const MX2: U128x8 = U128x8::splat(M4_7 * 2);
-            const MX1: U128x8 = U128x8::splat(M4_7 * 1);
-            x = x.sub_on_ge(MX8);
-            x = x.sub_on_ge(MX4);
-            x = x.sub_on_ge(MX2);
-            x = x.sub_on_ge(MX1);
-            x
-        }
-        #[inline]
-        fn rem_u128x8_m4_11(mut x: U128x8) -> U128x8 {
-            const MX8: U128x8 = U128x8::splat(M4_11 * 8);
-            const MX4: U128x8 = U128x8::splat(M4_11 * 4);
-            const MX2: U128x8 = U128x8::splat(M4_11 * 2);
-            const MX1: U128x8 = U128x8::splat(M4_11 * 1);
-            x = x.sub_on_ge(MX8);
-            x = x.sub_on_ge(MX4);
-            x = x.sub_on_ge(MX2);
-            x = x.sub_on_ge(MX1);
-            x
-        }
-
         self.f[pos / 8].0.set(pos % 8, 0);
         self.f[pos / 8].1.set(pos % 8, 0);
         self.f[pos / 8].2.set(pos % 8, 0);
         let mut zpos = 0;
         for (i, (f3, f7, f11)) in self.f.iter_mut().enumerate() {
-            let ff3 = rem_u128x8_m4_3(f3.mul10_add(x as _));
-            let ff7 = rem_u128x8_m4_7(f7.mul10_add(x as _));
-            let ff11 = rem_u128x8_m4_11(f11.mul10_add(x as _));
+            let ff3 = f3.mul10_add(x as _).rem10(M4_3);
+            let ff7 = f7.mul10_add(x as _).rem10(M4_7);
+            let ff11 = f11.mul10_add(x as _).rem10(M4_11);
             (*f3, *f7, *f11) = (ff3, ff7, ff11);
             let zeros = (ff3 | ff7 | ff11).is_zero();
             if unlikely(zeros.any()) {
