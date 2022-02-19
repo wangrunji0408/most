@@ -9,7 +9,7 @@ use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::process::exit;
 use std::simd::{u32x16, u64x8};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 // N  = 256
@@ -35,9 +35,8 @@ const M4_11: u128 = 672749994932560009201;
 const IN_IP: &str = "127.0.0.1:10001"; // mock
 const NO_SEND: bool = true;
 
-fn main() {
-    env_logger::init();
-    let (tcp_tx, tcp_rx) = mpsc::sync_channel::<TcpStream>(8);
+fn tcp() -> mpsc::Receiver<TcpStream> {
+    let (tcp_tx, tcp_rx) = mpsc::sync_channel::<TcpStream>(4);
     std::thread::spawn(|| {
         if NO_SEND {
             std::mem::forget(tcp_tx);
@@ -57,6 +56,11 @@ fn main() {
             std::thread::sleep(Duration::from_secs(1));
         }
     });
+    tcp_rx
+}
+
+fn main() {
+    env_logger::init();
 
     let mut get_tcp = TcpStream::connect(IN_IP).unwrap();
     get_tcp
@@ -67,21 +71,31 @@ fn main() {
     let len = get_tcp.read(&mut buf[..OK_HEADER.len()]).unwrap();
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
-    let mut task1 = Task::<M1Data>::new(1);
-    let mut task2 = Task::<M2Data>::new(2);
-    let mut task3 = Task::<M3Data>::new(3);
-    let mut task4 = Task::<M4Data>::new(4);
+    let (tx, rx) = mpsc::channel::<(Instant, Arc<[u8]>)>();
+    std::thread::spawn(move || {
+        let tcp_rx = tcp();
+        let mut task2 = Task::<M2Data>::new(2);
+        let mut task3 = Task::<M3Data>::new(3);
+        loop {
+            let (t0, bytes) = rx.recv().unwrap();
+            task3.append(&bytes, t0, &tcp_rx);
+            task2.append(&bytes, t0, &tcp_rx);
+        }
+    });
 
-    let mut buf = [0; 1024];
+    let tcp_rx = tcp();
+    let mut task1 = Task::<M1Data>::new(1);
+    let mut task4 = Task::<M4Data>::new(4);
     loop {
+        let mut buf = vec![0; 1024];
         let len = get_tcp.read(&mut buf).unwrap();
         let t0 = Instant::now();
-        let bytes = &buf[..len];
+        buf.truncate(len);
+        let bytes = Arc::<[u8]>::from(buf);
+        tx.send((t0, bytes.clone())).unwrap();
 
-        task1.append(bytes, t0, &tcp_rx);
-        task3.append(bytes, t0, &tcp_rx);
-        task2.append(bytes, t0, &tcp_rx);
-        task4.append(bytes, t0, &tcp_rx);
+        task1.append(&bytes, t0, &tcp_rx);
+        task4.append(&bytes, t0, &tcp_rx);
     }
 }
 
