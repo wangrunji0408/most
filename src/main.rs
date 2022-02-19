@@ -102,11 +102,12 @@ fn main() {
 
 trait Data: Default {
     fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize;
+    fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool;
 }
 
 #[derive(Default)]
 struct M1Data {
-    f: [(u32x16, u32x16); N / 16],
+    f: [u32x16; N / 16],
 }
 
 impl Data for M1Data {
@@ -125,14 +126,12 @@ impl Data for M1Data {
             }
         }
 
-        self.f[len % N / 16].0[len % 16] = 0;
-        self.f[len % N / 16].1[len % 16] = 0;
+        self.f[len % N / 16][len % 16] = 0;
         let mut zpos = 0;
-        for (i, (f1, f2)) in self.f.iter_mut().enumerate() {
+        for (i, f1) in self.f.iter_mut().enumerate() {
             let ff1 = rem_u32x16(*f1 * u32x16::splat(10) + u32x16::splat(x as _), M1_1);
-            let ff2 = rem_u32x16(*f2 * u32x16::splat(10) + u32x16::splat(x as _), M1_2);
-            (*f1, *f2) = (ff1, ff2);
-            let zeros = (ff1 | ff2).lanes_eq(u32x16::default());
+            *f1 = ff1;
+            let zeros = ff1.lanes_eq(u32x16::default());
             if unlikely(zeros.any()) {
                 for j in 0..16 {
                     if zeros.test(j) && i * 16 + j <= len {
@@ -146,6 +145,14 @@ impl Data for M1Data {
             }
         }
         zpos
+    }
+
+    fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+        let mut f = 0;
+        for x in digits {
+            f = (f * 10 + x as u32) % M1_2;
+        }
+        f == 0
     }
 }
 
@@ -176,11 +183,15 @@ impl Data for M2Data {
         }
         zpos
     }
+
+    fn check(&mut self, _digits: impl Iterator<Item = u8>) -> bool {
+        true
+    }
 }
 
 #[derive(Default)]
 struct M3Data {
-    f: [(u64x8, u64x8, u64x8); N / 8],
+    f: [u64x8; N / 8],
 }
 
 impl Data for M3Data {
@@ -199,16 +210,12 @@ impl Data for M3Data {
             }
         }
 
-        self.f[len % N / 8].0[len % 8] = 0;
-        self.f[len % N / 8].1[len % 8] = 0;
-        self.f[len % N / 8].2[len % 8] = 0;
+        self.f[len % N / 8][len % 8] = 0;
         let mut zpos = 0;
-        for (i, (f1, f2, f3)) in self.f.iter_mut().enumerate() {
+        for (i, f1) in self.f.iter_mut().enumerate() {
             let ff1 = rem_u64x8(*f1 * u64x8::splat(10) + u64x8::splat(x as _), M3_1);
-            let ff2 = rem_u64x8(*f2 * u64x8::splat(10) + u64x8::splat(x as _), M3_2);
-            let ff3 = rem_u64x8(*f3 * u64x8::splat(10) + u64x8::splat(x as _), M3_3);
-            (*f1, *f2, *f3) = (ff1, ff2, ff3);
-            let zeros = (ff1 | ff2 | ff3).lanes_eq(u64x8::default());
+            *f1 = ff1;
+            let zeros = ff1.lanes_eq(u64x8::default());
             if unlikely(zeros.any()) {
                 for j in 0..8 {
                     if zeros.test(j) && i * 8 + j <= len {
@@ -223,25 +230,31 @@ impl Data for M3Data {
         }
         zpos
     }
+
+    fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+        let mut f2 = 0;
+        let mut f3 = 0;
+        for x in digits {
+            f2 = (f2 * 10 + x as u64) % M3_2;
+            f3 = (f3 * 10 + x as u64) % M3_3;
+        }
+        f2 == 0 && f3 == 0
+    }
 }
 
 #[derive(Default)]
 struct M4Data {
-    f: [(U128x8, U128x8, U128x8); N / 8],
+    f: [U128x8; N / 8],
 }
 
 impl Data for M4Data {
     fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
-        self.f[len % N / 8].0.set(len % 8, 0);
-        self.f[len % N / 8].1.set(len % 8, 0);
-        self.f[len % N / 8].2.set(len % 8, 0);
+        self.f[len % N / 8].set(len % 8, 0);
         let mut zpos = 0;
-        for (i, (f3, f7, f11)) in self.f.iter_mut().enumerate() {
+        for (i, f3) in self.f.iter_mut().enumerate() {
             let ff3 = f3.mul10_add(x as _).rem10(M4_3);
-            let ff7 = f7.mul10_add(x as _).rem10(M4_7);
-            let ff11 = f11.mul10_add(x as _).rem10(M4_11);
-            (*f3, *f7, *f11) = (ff3, ff7, ff11);
-            let zeros = (ff3 | ff7 | ff11).is_zero();
+            *f3 = ff3;
+            let zeros = ff3.is_zero();
             if unlikely(zeros.any()) {
                 for j in 0..8 {
                     if zeros.test(j) && i * 8 + j <= len {
@@ -255,6 +268,16 @@ impl Data for M4Data {
             }
         }
         zpos
+    }
+
+    fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+        let mut f2 = 0;
+        let mut f3 = 0;
+        for x in digits {
+            f2 = rem_u128(f2 * 10 + x as u128, M4_7);
+            f3 = rem_u128(f3 * 10 + x as u128, M4_11);
+        }
+        f2 == 0 && f3 == 0
     }
 }
 
@@ -304,6 +327,12 @@ impl<T: Data> Task<T> {
                 let pos = self.len % N;
                 let len = if i < pos { pos - i } else { N - (i - pos) };
                 if i >= self.deque.len() || self.deque[self.deque.len() - len] == b'0' {
+                    continue;
+                }
+                if !self
+                    .f
+                    .check(self.deque.range(self.deque.len() - len..).map(|b| b - b'0'))
+                {
                     continue;
                 }
                 // tailing 0s
@@ -378,5 +407,42 @@ impl Stat {
         let avg = self.dsum / self.count;
         let nps = self.count as f32 / self.t00.elapsed().as_secs_f32();
         log::info!("M{k} {len:3}+{zeros}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
+    }
+}
+
+#[inline]
+fn rem_u128(x: u128, m: u128) -> u128 {
+    if x >= m * 5 {
+        if x >= m * 7 {
+            if x >= m * 9 {
+                x - m * 9
+            } else if x >= m * 8 {
+                x - m * 8
+            } else {
+                x - m * 7
+            }
+        } else {
+            if x >= m * 6 {
+                x - m * 6
+            } else {
+                x - m * 5
+            }
+        }
+    } else {
+        if x >= m * 2 {
+            if x >= m * 4 {
+                x - m * 4
+            } else if x >= m * 3 {
+                x - m * 3
+            } else {
+                x - m * 2
+            }
+        } else {
+            if x >= m * 1 {
+                x - m * 1
+            } else {
+                x
+            }
+        }
     }
 }
