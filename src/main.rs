@@ -3,7 +3,6 @@
 #![feature(stdsimd)]
 
 use most::U128x8;
-use std::collections::VecDeque;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
@@ -65,7 +64,7 @@ fn main() {
             t0 = Instant::now();
             bytes = &buf[..len];
         }
-        if let Some(idx) = task1.append(bytes, t0, &mut send_tcp) {
+        if let Some(idx) = task4.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -73,7 +72,7 @@ fn main() {
             task4.clear();
             continue;
         }
-        if let Some(idx) = task4.append(bytes, t0, &mut send_tcp) {
+        if let Some(idx) = task1.append(bytes, t0, &mut send_tcp) {
             bytes = &bytes[idx..];
             task1.clear();
             task2.clear();
@@ -275,7 +274,7 @@ impl Data for M4Data {
 
 struct Task<T: Data> {
     stat: Stat,
-    deque: VecDeque<u8>,
+    deque: [u8; N],
     len: usize,
     f: T,
     k: u8,
@@ -285,7 +284,7 @@ impl<T: Data> Task<T> {
     fn new(k: u8) -> Self {
         Task {
             stat: Stat::new(),
-            deque: VecDeque::with_capacity(N),
+            deque: [0; N],
             f: T::default(),
             len: 0,
             k,
@@ -293,7 +292,6 @@ impl<T: Data> Task<T> {
     }
 
     fn clear(&mut self) {
-        self.deque.clear();
         self.len = 0;
         // no need to clear `f`
     }
@@ -303,11 +301,7 @@ impl<T: Data> Task<T> {
         let mut zbuf = [unsafe { std::mem::MaybeUninit::uninit().assume_init() }; N];
         let mut iter = bytes.iter().enumerate();
         while let Some((idx, &b)) = iter.next() {
-            if self.deque.len() == N {
-                self.deque.pop_front();
-            }
-            self.deque.push_back(b);
-
+            self.deque[self.len % N] = b;
             let x = b - b'0';
 
             let zpos = self.f.push(x, self.len, &mut zbuf);
@@ -318,14 +312,14 @@ impl<T: Data> Task<T> {
                 let i = i as usize;
                 let pos = self.len % N;
                 let len = if i < pos { pos - i } else { N - (i - pos) };
-                if i >= self.deque.len() || self.deque[self.deque.len() - len] == b'0' {
+                if i >= self.len || self.deque[i] == b'0' {
                     continue;
                 }
                 if !self
                     .f
-                    .check(self.deque.range(self.deque.len() - len..).map(|b| b - b'0'))
+                    .check((0..len).map(|j| self.deque[(i + j) % N] - b'0'))
                 {
-                    log::warn!("M{} false positive", self.k);
+                    log::debug!("M{} false positive", self.k);
                     continue;
                 }
                 // tailing 0s
@@ -336,7 +330,7 @@ impl<T: Data> Task<T> {
                     }
                     zeros += 1;
                 }
-                send(tcp, len, zeros, &self.deque);
+                send(tcp, i, len, zeros, &self.deque);
                 self.stat.add(self.k, len, zeros, t0);
                 return Some(idx + zeros);
             }
@@ -345,14 +339,7 @@ impl<T: Data> Task<T> {
     }
 }
 
-fn send(tcp: &mut TcpStream, len: usize, zeros: usize, deque: &VecDeque<u8>) {
-    let (mut n0, mut n1) = deque.as_slices();
-    if n1.len() >= len {
-        n0 = &[];
-        n1 = &n1[n1.len() - len..];
-    } else {
-        n0 = &n0[deque.len() - len..];
-    }
+fn send(tcp: &mut TcpStream, i0: usize, len: usize, zeros: usize, deque: &[u8; N]) {
     const HEADER: &str = "POST /submit?user=omicron&passwd=y8J6IGKr HTTP/1.1\r\nHost: 172.1.1.119:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
     let mut len_strs = vec![];
     for i in 0..=zeros {
@@ -363,8 +350,8 @@ fn send(tcp: &mut TcpStream, len: usize, zeros: usize, deque: &VecDeque<u8>) {
         iov.extend([
             IoSlice::new(HEADER.as_bytes()),
             IoSlice::new(len_strs[i].as_bytes()),
-            IoSlice::new(n0),
-            IoSlice::new(n1),
+            IoSlice::new(&deque[i0..(i0 + len).min(N)]),
+            IoSlice::new(&deque[..(i0 + len).max(N) - N]),
             IoSlice::new(&b"0000000000"[..i]),
         ]);
     }
