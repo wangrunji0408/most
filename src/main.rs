@@ -2,31 +2,12 @@
 #![feature(portable_simd)]
 #![feature(stdsimd)]
 
-use most::U128x8;
+use most::*;
 use std::intrinsics::unlikely;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::simd::{u32x16, u64x8};
 use std::time::{Duration, Instant};
-
-// N  = 256
-// M1 = 20220217214410 = 2 * 5 * 431 * 46589 * 100699
-// M2 = 104648257118348370704723119
-// M3 = 125000000000000140750000000000052207500000000006359661
-//    = 500000000000000147 * 500000000000000207 * 500000000000000209
-// M4 = a hidden but fixed integer, whose prime factors include and only include 3, 7 and 11
-//    = 3^50 * 7^30 * 11^20
-const N: usize = 256;
-const M1_1: u32 = 431 * 46589;
-const M1_2: u32 = 2 * 5 * 100699;
-const M2: u128 = 104648257118348370704723119;
-const M3_1: u64 = 500000000000000147;
-const M3_2: u64 = 500000000000000207;
-const M3_3: u64 = 500000000000000209;
-const M4_3: u128 = 717897987691852588770249;
-const M4_7: u128 = 22539340290692258087863249;
-const M4_11: u128 = 672749994932560009201;
-const M4_TEST: u32 = 43046721; // 3^16
 
 // const IN_IP: &str = "47.95.111.217:10001";  // public
 // const IN_IP: &str = "172.1.1.119:10001"; // inner
@@ -182,20 +163,6 @@ struct M3Data {
 
 impl Data for M3Data {
     fn push(&mut self, x: u8, len: usize, zbuf: &mut [u16]) -> usize {
-        #[inline]
-        fn rem_u64x8(x: u64x8, m: u64) -> u64x8 {
-            use std::arch::x86_64::_mm512_min_epu64;
-            use std::mem::transmute;
-            unsafe {
-                let mut x = transmute(x);
-                x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 8)));
-                x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 4)));
-                x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 2)));
-                x = _mm512_min_epu64(x, transmute(u64x8::from(x) - u64x8::splat(m * 1)));
-                u64x8::from(x)
-            }
-        }
-
         self.f[len % N / 8][len % 8] = 0;
         let mut zpos = 0;
         for (i, f1) in self.f.iter_mut().enumerate() {
@@ -387,56 +354,5 @@ impl Stat {
         let avg = self.dsum / self.count;
         let nps = self.count as f32 / self.t00.elapsed().as_secs_f32();
         log::info!("M{k} {len:3}+{zeros}  lat: {latency:>9?}  avg: {avg:>9?}  nps: {nps:.3?}");
-    }
-}
-
-#[inline]
-fn rem_u32x16(x: u32x16, m: u32) -> u32x16 {
-    use std::arch::x86_64::_mm512_min_epu32;
-    use std::mem::transmute;
-    unsafe {
-        let mut x = transmute(x);
-        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
-        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 4)));
-        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 2)));
-        x = _mm512_min_epu32(x, transmute(u32x16::from(x) - u32x16::splat(m * 1)));
-        u32x16::from(x)
-    }
-}
-
-#[inline]
-fn rem_u128(x: u128, m: u128) -> u128 {
-    if x >= m * 5 {
-        if x >= m * 7 {
-            if x >= m * 9 {
-                x - m * 9
-            } else if x >= m * 8 {
-                x - m * 8
-            } else {
-                x - m * 7
-            }
-        } else {
-            if x >= m * 6 {
-                x - m * 6
-            } else {
-                x - m * 5
-            }
-        }
-    } else {
-        if x >= m * 2 {
-            if x >= m * 4 {
-                x - m * 4
-            } else if x >= m * 3 {
-                x - m * 3
-            } else {
-                x - m * 2
-            }
-        } else {
-            if x >= m * 1 {
-                x - m * 1
-            } else {
-                x
-            }
-        }
     }
 }
