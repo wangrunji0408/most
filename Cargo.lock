@@ -29,6 +29,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "bit_field"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcb6dd1c2376d2e096796e234a70e17e94cc2d5d54ff8ce42b28cef1d0d359a4"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -296,6 +302,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "most-uefi"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "uefi",
+ "uefi-services",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -525,6 +540,49 @@ checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ucs2"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bad643914094137d475641b6bab89462505316ec2ce70907ad20102d28a79ab8"
+dependencies = [
+ "bit_field",
+]
+
+[[package]]
+name = "uefi"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a21398a404f6fa14f6df34756714874eccdf73587eba863cb5bd55d8bada7496"
+dependencies = [
+ "bitflags",
+ "log",
+ "ucs2",
+ "uefi-macros",
+]
+
+[[package]]
+name = "uefi-macros"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7006b85ae8acaf2b448c5f1630a434caaacaedcc0907f12404e4e31c9dafcdb3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "uefi-services"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7840bddc6477dc443cc5652ca9683de9f10bd173691151c3160d734521bef3bd"
+dependencies = [
+ "cfg-if",
+ "log",
+ "uefi",
 ]
 
 [[package]]

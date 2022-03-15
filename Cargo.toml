@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "most",
+    "most-uefi",
 ]
 
 [profile.release]
