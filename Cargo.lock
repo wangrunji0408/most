@@ -311,6 +311,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "most2"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

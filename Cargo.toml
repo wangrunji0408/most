@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "most",
+    "most2",
     "most-uefi",
 ]
 
