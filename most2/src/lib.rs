@@ -57,6 +57,11 @@ impl AsUsize for u64 {
         self as usize
     }
 }
+impl AsUsize for u128 {
+    fn as_usize(self) -> usize {
+        self as usize
+    }
+}
 
 struct WindowArray<T> {
     i: usize,
@@ -149,6 +154,63 @@ impl Data for M1Data {
 }
 
 impl M1Data {
+    /// For bench only.
+    pub fn prepare_nop(&mut self) {
+        self.pre_start = self.i;
+    }
+}
+
+pub struct M2Data {
+    i: usize,
+    window: WindowArray<u128>,
+    pre_start: usize,
+    rtable: [[u128; 10]; PRE_LEN],
+}
+
+impl Default for M2Data {
+    fn default() -> Self {
+        let mut s = Self {
+            i: 0,
+            window: Default::default(),
+            pre_start: 0,
+            rtable: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; PRE_LEN],
+        };
+        s.prepare();
+        s
+    }
+}
+
+impl Data for M2Data {
+    fn push(&mut self, x: u8) -> Option<usize> {
+        self.i += 1;
+        let t0 = self.window.last();
+        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M2;
+        // trace!("{} t[{}] = {}", x, self.i, t1);
+        let len = self.window.push(t1);
+        match len {
+            Some(l) if l >= 27 && x != 0 => Some(l),
+            _ => None,
+        }
+    }
+
+    fn prepare(&mut self) {
+        let mut rs = self.rtable[self.i - self.pre_start];
+        self.pre_start = self.i;
+        for rr in &mut self.rtable {
+            *rr = rs;
+            rs = rs.map(|mut x| {
+                let c1 = x * (M2_R as u128 & 0xFFFF_FFFF) % M2;
+                x = (x << 32) % M2;
+                let c2 = x * ((M2_R >> 32) as u128 & 0xFFFF_FFFF) % M2;
+                x = (x << 32) % M2;
+                let c3 = x * ((M2_R >> 64) as u128 & 0xFFFF_FFFF) % M2;
+                (c1 + c2 + c3) % M2
+            });
+        }
+    }
+}
+
+impl M2Data {
     /// For bench only.
     pub fn prepare_nop(&mut self) {
         self.pre_start = self.i;
@@ -264,6 +326,20 @@ mod tests {
         assert_eq!(
             state.push(m1str.bytes().last().unwrap() - b'0'),
             Some(m1str.len())
+        );
+    }
+
+    #[test]
+    fn m2() {
+        env_logger::init();
+        let mut state = M2Data::default();
+        let m2str = "357608048612464930233730043816992249527720913075773951798";
+        for b in m2str[..m2str.len() - 1].bytes() {
+            assert_eq!(state.push(b - b'0'), None);
+        }
+        assert_eq!(
+            state.push(m2str.bytes().last().unwrap() - b'0'),
+            Some(m2str.len())
         );
     }
 }

@@ -24,7 +24,7 @@ fn main() {
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
     let mut m1 = M1Data::default();
-    // let mut m2 = M2Data::default();
+    let mut m2 = M2Data::default();
     let mut m3 = M3Data::default();
     let mut m4 = M4Data::default();
     let mut buf = [0; 1024];
@@ -44,6 +44,16 @@ fn main() {
                 }
                 send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
                 stat.add(1, len, zeros, t0);
+            }
+            if let Some(len) = m2.push(x) {
+                let mut zeros = 0;
+                let mut i = i;
+                while i + 1 < len && buf[i + 1] == b'0' {
+                    zeros += 1;
+                    i += 1;
+                }
+                send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
+                stat.add(2, len, zeros, t0);
             }
             if let Some(len) = m3.push(x) {
                 let mut zeros = 0;
@@ -73,7 +83,7 @@ fn main() {
         }
         // prepare for next
         m1.prepare();
-        // m2.prepare();
+        m2.prepare();
         m3.prepare();
         m4.prepare();
     }
