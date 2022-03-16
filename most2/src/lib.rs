@@ -1,5 +1,10 @@
 #![no_std]
 
+#[macro_use]
+extern crate alloc;
+
+use log::*;
+
 // N  = 256
 // M1 = 20220311122858
 //    = 2 7 11 887 6143 24097
@@ -38,9 +43,9 @@ pub trait Data: Default {
 pub struct M1Data {
     r: u32,
     t: [u32; N],
-    x: [u8; N],
     i: usize,
-    tset: [u8; HASH_SIZE],
+    tset_i: [u8; HASH_SIZE],
+    tset_v: [u32; HASH_SIZE],
     // rtable: [[u64; 9]; N],
 }
 
@@ -49,9 +54,9 @@ impl Default for M1Data {
         Self {
             r: 1,
             t: [0; N],
-            x: [0; N],
             i: 0,
-            tset: [0; HASH_SIZE],
+            tset_i: [0; HASH_SIZE],
+            tset_v: [0; HASH_SIZE],
         }
     }
 }
@@ -62,21 +67,46 @@ impl Data for M1Data {
         self.i += 1;
         self.r = (self.r as u64 * M1_R % M1_1 as u64) as u32;
         let t1 = ((t0 as u64 + x as u64 * self.r as u64) % M1_1 as u64) as u32;
+        // trace!("{} t[{}] = {}", x, self.i, t1);
         let tn = self.t[self.i % N];
         self.t[self.i % N] = t1;
+        // update hash table
         if self.i > N {
-            self.tset[tn as usize % HASH_SIZE] = 0;
+            self.tset_i[tn as usize % HASH_SIZE] = 0;
+            self.tset_v[tn as usize % HASH_SIZE] = 0;
         }
-        let hashv = &mut self.tset[t1 as usize % HASH_SIZE];
-        let len = if *hashv != 0 {
-            Some((self.i - *hashv as usize) % N)
+        let hashi = &mut self.tset_i[t1 as usize % HASH_SIZE];
+        let hashv = &mut self.tset_v[t1 as usize % HASH_SIZE];
+        let len = if *hashv == t1 && x != 0 && x % 2 == 0 {
+            Some((self.i - *hashi as usize) % N)
         } else {
             None
         };
-        *hashv = (self.i % N) as u8;
+        *hashi = (self.i % N) as u8;
+        *hashv = t1;
         len
     }
     // fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
 
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn m1() {
+        // env_logger::init();
+        let mut state = M1Data::default();
+        let m1str = (M1 * 7).to_string();
+        for b in m1str[..m1str.len() - 1].bytes() {
+            assert_eq!(state.push(b - b'0'), None);
+        }
+        assert_eq!(
+            state.push(m1str.bytes().last().unwrap() - b'0'),
+            Some(m1str.len())
+        );
+    }
 }

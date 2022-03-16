@@ -1,3 +1,4 @@
+use log::*;
 use most2::*;
 use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
@@ -22,20 +23,35 @@ fn main() {
     let len = get_tcp.read(&mut buf[..OK_HEADER.len()]).unwrap();
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
+    let mut m1 = M1Data::default();
     let mut buf = [0; 1024];
-    let mut bytes = &buf[..0];
-    let mut t0 = Instant::now();
+    let mut prev = vec![];
+    let mut stat = Stat::new();
     loop {
-        if bytes.is_empty() {
-            let len = get_tcp.read(&mut buf).unwrap();
-            t0 = Instant::now();
-            bytes = &buf[..len];
+        let len = get_tcp.read(&mut buf).unwrap();
+        let t0 = Instant::now();
+        for i in 0..len {
+            let x = buf[i] - b'0';
+            if let Some(len) = m1.push(x) {
+                let mut zeros = 0;
+                let mut i = i;
+                while i + 1 < len && buf[i + 1] == b'0' {
+                    zeros += 1;
+                    i += 1;
+                }
+                send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
+                stat.add(1, len, zeros, t0);
+            }
         }
-        bytes = &buf[..0];
+        // update prev
+        prev.extend_from_slice(&buf[..len]);
+        if prev.len() > N {
+            prev.drain(..prev.len() - N);
+        }
     }
 }
 
-fn send(tcp: &mut TcpStream, i0: usize, len: usize, zeros: usize, deque: &[u8; N]) {
+fn send(tcp: &mut TcpStream, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) {
     const HEADER: &str = "POST /submit HTTP/1.1\r\nHost: 59.110.124.141:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
     let mut len_strs = vec![];
     for i in 0..=zeros {
@@ -46,10 +62,13 @@ fn send(tcp: &mut TcpStream, i0: usize, len: usize, zeros: usize, deque: &[u8; N
         iov.extend([
             IoSlice::new(HEADER.as_bytes()),
             IoSlice::new(len_strs[i].as_bytes()),
-            IoSlice::new(&deque[i0..(i0 + len).min(N)]),
-            IoSlice::new(&deque[..(i0 + len).max(N) - N]),
-            IoSlice::new(&b"0000000000"[..i]),
+            IoSlice::new(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]),
+            IoSlice::new(&buf[(buf.len() - zeros).max(len) - len..buf.len() - i]),
         ]);
+        // let mut s = vec![];
+        // s.extend_from_slice(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]);
+        // s.extend_from_slice(&buf[(buf.len() - zeros).max(len) - len..buf.len() - i]);
+        // info!("{}", String::from_utf8(s).unwrap());
     }
     match tcp.write_vectored(&iov) {
         Ok(_) => {}
