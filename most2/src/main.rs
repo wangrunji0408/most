@@ -48,6 +48,8 @@ fn main() {
         if prev.len() > N {
             prev.drain(..prev.len() - N);
         }
+        // prepare for next
+        m1.prepare();
     }
 }
 

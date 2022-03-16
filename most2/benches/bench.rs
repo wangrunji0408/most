@@ -8,6 +8,11 @@ fn bench(c: &mut Criterion) {
     c.bench_function("m1/32", |b| {
         let mut state = M1Data::default();
         let x = 3u8;
-        b.iter(|| state.push(x))
+        b.iter(|| {
+            state.prepare_nop();
+            for _ in 0..100 {
+                state.push(x);
+            }
+        })
     });
 }

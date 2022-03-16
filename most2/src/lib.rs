@@ -33,31 +33,35 @@ const M1_R: u64 = 44885482;
 const M2_R: u128 = 94183431406513533634251061;
 const M3_R: u64 = 450000000000000199;
 const HASH_SIZE: usize = 1 << 12;
+const PRE_LEN: usize = 400;
 
 pub trait Data: Default {
     fn push(&mut self, x: u8) -> Option<usize>;
     // fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool;
-    // fn prepare(&mut self);
+    fn prepare(&mut self);
 }
 
 pub struct M1Data {
-    r: u32,
     t: [u32; N],
     i: usize,
     tset_i: [u8; HASH_SIZE],
     tset_v: [u32; HASH_SIZE],
-    // rtable: [[u64; 9]; N],
+    pre_start: usize,
+    rtable: [[u32; 10]; PRE_LEN],
 }
 
 impl Default for M1Data {
     fn default() -> Self {
-        Self {
-            r: 1,
+        let mut s = Self {
             t: [0; N],
             i: 0,
             tset_i: [0; HASH_SIZE],
             tset_v: [0; HASH_SIZE],
-        }
+            pre_start: 0,
+            rtable: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; PRE_LEN],
+        };
+        s.prepare();
+        s
     }
 }
 
@@ -65,8 +69,7 @@ impl Data for M1Data {
     fn push(&mut self, x: u8) -> Option<usize> {
         let t0 = self.t[self.i % N];
         self.i += 1;
-        self.r = (self.r as u64 * M1_R % M1_1 as u64) as u32;
-        let t1 = ((t0 as u64 + x as u64 * self.r as u64) % M1_1 as u64) as u32;
+        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M1_1;
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let tn = self.t[self.i % N];
         self.t[self.i % N] = t1;
@@ -86,9 +89,21 @@ impl Data for M1Data {
         *hashv = t1;
         len
     }
-    // fn check(&mut self, digits: impl Iterator<Item = u8>) -> bool {
+    fn prepare(&mut self) {
+        let mut rs = self.rtable[self.i - self.pre_start];
+        self.pre_start = self.i;
+        for rr in &mut self.rtable {
+            *rr = rs;
+            rs = rs.map(|x| (x as u64 * M1_R % M1_1 as u64) as u32);
+        }
+    }
+}
 
-    // }
+impl M1Data {
+    /// For bench only.
+    pub fn prepare_nop(&mut self) {
+        self.pre_start = self.i;
+    }
 }
 
 #[cfg(test)]
