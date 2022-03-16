@@ -41,11 +41,65 @@ pub trait Data: Default {
     fn prepare(&mut self);
 }
 
-pub struct M1Data {
-    t: [u32; N],
+trait AsUsize {
+    fn as_usize(self) -> usize;
+}
+impl AsUsize for u32 {
+    fn as_usize(self) -> usize {
+        self as usize
+    }
+}
+
+struct WindowArray<T> {
     i: usize,
+    t: [T; N],
     tset_i: [u8; HASH_SIZE],
-    tset_v: [u32; HASH_SIZE],
+    tset_v: [T; HASH_SIZE],
+}
+
+impl<T: Default + Copy> Default for WindowArray<T> {
+    fn default() -> Self {
+        Self {
+            i: 0,
+            t: [T::default(); N],
+            tset_i: [0; HASH_SIZE],
+            tset_v: [T::default(); HASH_SIZE],
+        }
+    }
+}
+
+impl<T: Default + Eq + Copy + AsUsize> WindowArray<T> {
+    /// Push an element and return the distance to the nearest element equals to it.
+    fn push(&mut self, x: T) -> Option<usize> {
+        self.i += 1;
+        let x0 = self.t[self.i % N];
+        self.t[self.i % N] = x;
+        // update hash table
+        if self.i > N {
+            self.tset_i[x0.as_usize() % HASH_SIZE] = 0;
+            self.tset_v[x0.as_usize() % HASH_SIZE] = T::default();
+        }
+        let hashi = &mut self.tset_i[x.as_usize() % HASH_SIZE];
+        let hashv = &mut self.tset_v[x.as_usize() % HASH_SIZE];
+        let len = if *hashv == x {
+            Some((self.i - *hashi as usize) % N)
+        } else {
+            None
+        };
+        *hashi = (self.i % N) as u8;
+        *hashv = x;
+        len
+    }
+
+    /// Get the last element.
+    fn last(&self) -> T {
+        self.t[self.i % N]
+    }
+}
+
+pub struct M1Data {
+    i: usize,
+    window: WindowArray<u32>,
     pre_start: usize,
     rtable: [[u32; 10]; PRE_LEN],
 }
@@ -53,10 +107,8 @@ pub struct M1Data {
 impl Default for M1Data {
     fn default() -> Self {
         let mut s = Self {
-            t: [0; N],
             i: 0,
-            tset_i: [0; HASH_SIZE],
-            tset_v: [0; HASH_SIZE],
+            window: Default::default(),
             pre_start: 0,
             rtable: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; PRE_LEN],
         };
@@ -67,28 +119,18 @@ impl Default for M1Data {
 
 impl Data for M1Data {
     fn push(&mut self, x: u8) -> Option<usize> {
-        let t0 = self.t[self.i % N];
         self.i += 1;
+        let t0 = self.window.last();
         let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M1_1;
         // trace!("{} t[{}] = {}", x, self.i, t1);
-        let tn = self.t[self.i % N];
-        self.t[self.i % N] = t1;
-        // update hash table
-        if self.i > N {
-            self.tset_i[tn as usize % HASH_SIZE] = 0;
-            self.tset_v[tn as usize % HASH_SIZE] = 0;
-        }
-        let hashi = &mut self.tset_i[t1 as usize % HASH_SIZE];
-        let hashv = &mut self.tset_v[t1 as usize % HASH_SIZE];
-        let len = if *hashv == t1 && x != 0 && x % 2 == 0 {
-            Some((self.i - *hashi as usize) % N)
+        let len = self.window.push(t1);
+        if x != 0 && x % 2 == 0 {
+            len
         } else {
             None
-        };
-        *hashi = (self.i % N) as u8;
-        *hashv = t1;
-        len
+        }
     }
+
     fn prepare(&mut self) {
         let mut rs = self.rtable[self.i - self.pre_start];
         self.pre_start = self.i;
@@ -113,7 +155,7 @@ mod tests {
 
     #[test]
     fn m1() {
-        // env_logger::init();
+        env_logger::init();
         let mut state = M1Data::default();
         let m1str = (M1 * 7).to_string();
         for b in m1str[..m1str.len() - 1].bytes() {
