@@ -134,7 +134,10 @@ impl Data for M1Data {
     fn push(&mut self, x: u8) -> Option<usize> {
         self.i += 1;
         let t0 = self.window.last();
-        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M1_1;
+        let mut t1 = t0 + self.rtable[self.i - self.pre_start][x as usize];
+        if t1 >= M1_1 {
+            t1 -= M1_1;
+        }
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let len = self.window.push(t1);
         match len {
@@ -184,7 +187,10 @@ impl Data for M2Data {
     fn push(&mut self, x: u8) -> Option<usize> {
         self.i += 1;
         let t0 = self.window.last();
-        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M2;
+        let mut t1 = t0 + self.rtable[self.i - self.pre_start][x as usize];
+        if t1 >= M2 {
+            t1 -= M2;
+        }
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let len = self.window.push(t1);
         match len {
@@ -241,7 +247,10 @@ impl Data for M3Data {
     fn push(&mut self, x: u8) -> Option<usize> {
         self.i += 1;
         let t0 = self.window.last();
-        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M3_1;
+        let mut t1 = t0 + self.rtable[self.i - self.pre_start][x as usize];
+        if t1 >= M3_1 {
+            t1 -= M3_1;
+        }
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let len = self.window.push(t1);
         match len {
@@ -291,7 +300,10 @@ impl Data for M4Data {
     fn push(&mut self, x: u8) -> Option<usize> {
         self.i += 1;
         let t0 = self.window.last();
-        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M4_1;
+        let mut t1 = t0 + self.rtable[self.i - self.pre_start][x as usize];
+        if t1 >= M4_1 {
+            t1 -= M4_1;
+        }
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let len = self.window.push(t1);
         match len {
