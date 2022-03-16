@@ -310,6 +310,13 @@ impl Data for M4Data {
     }
 }
 
+impl M4Data {
+    /// For bench only.
+    pub fn prepare_nop(&mut self) {
+        self.pre_start = self.i;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
