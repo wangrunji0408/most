@@ -15,4 +15,14 @@ fn bench(c: &mut Criterion) {
             }
         })
     });
+    c.bench_function("m3/64", |b| {
+        let mut state = M3Data::default();
+        let x = 3u8;
+        b.iter(|| {
+            state.prepare_nop();
+            for _ in 0..100 {
+                state.push(x);
+            }
+        })
+    });
 }

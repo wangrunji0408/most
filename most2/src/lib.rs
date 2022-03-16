@@ -21,6 +21,7 @@ use log::*;
 //         = 450000000000000199         mod M3_1
 //         = 450000000000000208         mod M3_2
 //         = 150000000000000073         mod M3_3
+//         = 38742049                   mod 3^16
 pub const N: usize = 256;
 const M1: u64 = 20220311122858;
 const M1_1: u32 = 7 * 887 * 24097;
@@ -32,6 +33,8 @@ const M3_3: u64 = 500000000000000243;
 const M1_R: u64 = 44885482;
 const M2_R: u128 = 94183431406513533634251061;
 const M3_R: u64 = 450000000000000199;
+const M4_1: u32 = 43046721; // 3^16
+const M4_R: u64 = 38742049;
 const HASH_SIZE: usize = 1 << 12;
 const PRE_LEN: usize = 400;
 
@@ -45,6 +48,11 @@ trait AsUsize {
     fn as_usize(self) -> usize;
 }
 impl AsUsize for u32 {
+    fn as_usize(self) -> usize {
+        self as usize
+    }
+}
+impl AsUsize for u64 {
     fn as_usize(self) -> usize {
         self as usize
     }
@@ -124,10 +132,9 @@ impl Data for M1Data {
         let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M1_1;
         // trace!("{} t[{}] = {}", x, self.i, t1);
         let len = self.window.push(t1);
-        if x != 0 && x % 2 == 0 {
-            len
-        } else {
-            None
+        match len {
+            Some(l) if l >= 14 && x != 0 && x % 2 == 0 => Some(l),
+            _ => None,
         }
     }
 
@@ -145,6 +152,99 @@ impl M1Data {
     /// For bench only.
     pub fn prepare_nop(&mut self) {
         self.pre_start = self.i;
+    }
+}
+
+pub struct M3Data {
+    i: usize,
+    window: WindowArray<u64>,
+    pre_start: usize,
+    rtable: [[u64; 10]; PRE_LEN],
+}
+
+impl Default for M3Data {
+    fn default() -> Self {
+        let mut s = Self {
+            i: 0,
+            window: Default::default(),
+            pre_start: 0,
+            rtable: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; PRE_LEN],
+        };
+        s.prepare();
+        s
+    }
+}
+
+impl Data for M3Data {
+    fn push(&mut self, x: u8) -> Option<usize> {
+        self.i += 1;
+        let t0 = self.window.last();
+        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M3_1;
+        // trace!("{} t[{}] = {}", x, self.i, t1);
+        let len = self.window.push(t1);
+        match len {
+            Some(l) if l >= 54 && x != 0 => Some(l),
+            _ => None,
+        }
+    }
+
+    fn prepare(&mut self) {
+        let mut rs = self.rtable[self.i - self.pre_start];
+        self.pre_start = self.i;
+        for rr in &mut self.rtable {
+            *rr = rs;
+            rs = rs.map(|x| (x as u128 * M3_R as u128 % M3_1 as u128) as u64);
+        }
+    }
+}
+
+impl M3Data {
+    /// For bench only.
+    pub fn prepare_nop(&mut self) {
+        self.pre_start = self.i;
+    }
+}
+
+pub struct M4Data {
+    i: usize,
+    window: WindowArray<u32>,
+    pre_start: usize,
+    rtable: [[u32; 10]; PRE_LEN],
+}
+
+impl Default for M4Data {
+    fn default() -> Self {
+        let mut s = Self {
+            i: 0,
+            window: Default::default(),
+            pre_start: 0,
+            rtable: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; PRE_LEN],
+        };
+        s.prepare();
+        s
+    }
+}
+
+impl Data for M4Data {
+    fn push(&mut self, x: u8) -> Option<usize> {
+        self.i += 1;
+        let t0 = self.window.last();
+        let t1 = (t0 + self.rtable[self.i - self.pre_start][x as usize]) % M4_1;
+        // trace!("{} t[{}] = {}", x, self.i, t1);
+        let len = self.window.push(t1);
+        match len {
+            Some(l) if l >= 68 && x != 0 => Some(l),
+            _ => None,
+        }
+    }
+
+    fn prepare(&mut self) {
+        let mut rs = self.rtable[self.i - self.pre_start];
+        self.pre_start = self.i;
+        for rr in &mut self.rtable {
+            *rr = rs;
+            rs = rs.map(|x| (x as u64 * M4_R % M4_1 as u64) as u32);
+        }
     }
 }
 
