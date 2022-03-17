@@ -4,6 +4,8 @@ use std::io::{IoSlice, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+// const IN_IP: &str = "127.0.0.1:10001";
+// const OUT_IP: &str = "127.0.0.1:10002";
 const IN_IP: &str = "59.110.124.141:10001";
 const OUT_IP: &str = "59.110.124.141:10002";
 
@@ -27,7 +29,6 @@ fn main() {
     let mut m2 = M2Data::default();
     let mut m3 = M3Data::default();
     let mut m4 = M4Data::default();
-    let mut buf = [0; 1024];
     let mut prev = vec![];
     let mut stat = Stat::new();
     loop {
@@ -35,7 +36,7 @@ fn main() {
         let t0 = Instant::now();
         for i in 0..len {
             let x = buf[i] - b'0';
-            if let Some(len) = m1.push(x) {
+            let mut send = |k, len| {
                 let mut zeros = 0;
                 let mut i = i;
                 while i + 1 < len && buf[i + 1] == b'0' {
@@ -43,37 +44,19 @@ fn main() {
                     i += 1;
                 }
                 send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
-                stat.add(1, len, zeros, t0);
+                stat.add(k, len, zeros, t0);
+            };
+            if let Some(len) = m1.push(x) {
+                send(1, len);
             }
             if let Some(len) = m2.push(x) {
-                let mut zeros = 0;
-                let mut i = i;
-                while i + 1 < len && buf[i + 1] == b'0' {
-                    zeros += 1;
-                    i += 1;
-                }
-                send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
-                stat.add(2, len, zeros, t0);
+                send(2, len);
             }
             if let Some(len) = m3.push(x) {
-                let mut zeros = 0;
-                let mut i = i;
-                while i + 1 < len && buf[i + 1] == b'0' {
-                    zeros += 1;
-                    i += 1;
-                }
-                send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
-                stat.add(3, len, zeros, t0);
+                send(3, len);
             }
             if let Some(len) = m4.push(x) {
-                let mut zeros = 0;
-                let mut i = i;
-                while i + 1 < len && buf[i + 1] == b'0' {
-                    zeros += 1;
-                    i += 1;
-                }
-                send(&mut send_tcp, len, zeros, &prev, &buf[..=i]);
-                stat.add(4, len, zeros, t0);
+                send(4, len);
             }
         }
         // update prev

@@ -9,3 +9,4 @@ edition = "2021"
 uefi = { path = "../../uefi-rs" }
 uefi-services = { path = "../../uefi-rs/uefi-services" }
 log = "0.4"
+most2 = { path = "../most2", default-features = false }

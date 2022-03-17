@@ -2,11 +2,16 @@
 name = "most2"
 version = "0.1.0"
 edition = "2021"
+default-run = "most2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["std"]
+std = ["env_logger"]
+
 [dependencies]
-env_logger = "0.9"
+env_logger = { version = "0.9", optional = true }
 log = "0.4"
 
 [dev-dependencies]

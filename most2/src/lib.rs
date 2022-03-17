@@ -35,7 +35,7 @@ const M2_R: u128 = 94183431406513533634251061;
 const M3_R: u64 = 450000000000000199;
 const M4_1: u32 = 43046721; // 3^16
 const M4_R: u64 = 38742049;
-const HASH_SIZE: usize = 1 << 12;
+const HASH_SIZE: usize = 1 << 16;
 const PRE_LEN: usize = 400;
 
 pub trait Data: Default {

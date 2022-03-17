@@ -9,11 +9,15 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+use core::fmt::Write;
+use core::ops::Deref;
+
+use most2::*;
 use uefi::table::boot::*;
 use uefi::{
     prelude::*,
-    proto::net::{tcp4, udp4, Ipv4Address},
-    Error, Event, Guid, Result,
+    proto::net::{tcp4, Ipv4Address},
+    Error, Event, Result,
 };
 
 #[entry]
@@ -41,19 +45,102 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
         .expect("failed to get input");
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
+    let mut m1 = M1Data::default();
+    let mut m2 = M2Data::default();
+    let mut m3 = M3Data::default();
+    let mut m4 = M4Data::default();
+    let mut prev = vec![];
     loop {
         let len = uefi.get_input(&mut buf).expect("failed to get input");
         // let msg = core::str::from_utf8(&buf[..len]).unwrap();
         // debug!("get: {:?}", msg);
 
-        if buf[..len].ends_with(b"20220311122858") {
-            uefi.send_output(b"20220311122858")
-                .expect("failed to send output");
+        for i in 0..len {
+            let x = buf[i] - b'0';
+            let mut send = |k, len| {
+                let mut zeros = 0;
+                let mut i = i;
+                while i + 1 < len && buf[i + 1] == b'0' {
+                    zeros += 1;
+                    i += 1;
+                }
+                send(&mut uefi, len, zeros, &prev, &buf[..=i]);
+                info!("M{k} {len:3}+{zeros}");
+            };
+            if let Some(len) = m1.push(x) {
+                send(1, len);
+            }
+            if let Some(len) = m2.push(x) {
+                send(2, len);
+            }
+            if let Some(len) = m3.push(x) {
+                send(3, len);
+            }
+            if let Some(len) = m4.push(x) {
+                send(4, len);
+            }
         }
+        // update prev
+        prev.extend_from_slice(&buf[..len]);
+        if prev.len() > N {
+            prev.drain(..prev.len() - N);
+        }
+        // prepare for next
+        m1.prepare();
+        m2.prepare();
+        m3.prepare();
+        m4.prepare();
     }
 
     panic!("end");
     Status::SUCCESS
+}
+
+fn send(uefi: &mut Uefi, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) {
+    const HEADER: &str = "POST /submit HTTP/1.1\r\nHost: 59.110.124.141:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
+    let mut output = StaticString::new();
+    for i in 0..=zeros {
+        write!(&mut output, "{HEADER}{}\r\n\r\n", len + i).unwrap();
+        output.extend_from_slice(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]);
+        output.extend_from_slice(&buf[(buf.len() - zeros).max(len) - len..buf.len() - i]);
+    }
+    uefi.send_output(&output).expect("failed to send output");
+}
+
+struct StaticString {
+    buf: [u8; 0x1000],
+    len: usize,
+}
+
+impl StaticString {
+    fn new() -> Self {
+        StaticString {
+            buf: unsafe { core::mem::MaybeUninit::uninit().assume_init() },
+            len: 0,
+        }
+    }
+    fn extend_from_slice(&mut self, s: &[u8]) {
+        self.buf[self.len..self.len + s.len()].copy_from_slice(s);
+        self.len += s.len();
+    }
+}
+
+impl Write for StaticString {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        if self.len + s.len() > self.buf.len() {
+            return Err(core::fmt::Error);
+        }
+        self.buf[self.len..self.len + s.len()].copy_from_slice(s.as_bytes());
+        self.len += s.len();
+        Ok(())
+    }
+}
+
+impl Deref for StaticString {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
 }
 
 #[derive(Debug)]

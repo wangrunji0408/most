@@ -306,6 +306,7 @@ name = "most-uefi"
 version = "0.1.0"
 dependencies = [
  "log",
+ "most2",
  "uefi",
  "uefi-services",
 ]
@@ -514,9 +515,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.86"
+version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a65b3f4ffa0092e9887669db0eae07941f023991ab58ea44da8fe8e2d511c6b"
+checksum = "ea297be220d52398dcc07ce15a209fce436d361735ac1db700cab3b6cdfb9f54"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -562,9 +563,7 @@ dependencies = [
 
 [[package]]
 name = "uefi"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a21398a404f6fa14f6df34756714874eccdf73587eba863cb5bd55d8bada7496"
+version = "0.15.2"
 dependencies = [
  "bitflags",
  "log",
@@ -574,9 +573,9 @@ dependencies = [
 
 [[package]]
 name = "uefi-macros"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7006b85ae8acaf2b448c5f1630a434caaacaedcc0907f12404e4e31c9dafcdb3"
+checksum = "a9271b66bf83671563773e54b178f1022ac2dab87dc197f80be51885a5e1a2f4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -585,9 +584,7 @@ dependencies = [
 
 [[package]]
 name = "uefi-services"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7840bddc6477dc443cc5652ca9683de9f10bd173691151c3160d734521bef3bd"
+version = "0.12.1"
 dependencies = [
  "cfg-if",
  "log",
