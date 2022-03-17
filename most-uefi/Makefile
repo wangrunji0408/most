@@ -26,6 +26,9 @@ run: build
 		-drive format=raw,file=fat:rw:${ESP} \
 		$(QEMU_ARGS)
 
+		# -device e1000,netdev=net0 \
+		# -netdev user,id=net0,hostfwd=tcp::10001-:10001,hostfwd=tcp::10002-:10002 \
+
 header:
 	$(OBJDUMP) -h $(EFI) | less
 
