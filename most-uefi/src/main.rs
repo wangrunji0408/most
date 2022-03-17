@@ -13,7 +13,7 @@ use uefi::table::boot::*;
 use uefi::{
     prelude::*,
     proto::net::{tcp4, udp4, Ipv4Address},
-    Event, Guid, Result,
+    Error, Event, Guid, Result,
 };
 
 #[entry]
@@ -21,6 +21,9 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
     // Initialize utilities (logging, memory allocation...)
     uefi_services::init(&mut st).expect("failed to initialize utilities");
     let bs = st.boot_services();
+    // disable watchdog
+    bs.set_watchdog_timer(0, 0x10000, None)
+        .expect("failed to disable watchdog");
 
     log::set_max_level(log::LevelFilter::Debug);
     let config = Config {
@@ -33,13 +36,20 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
 
     const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
     let mut buf = [0; 1024];
-    let len = uefi.get_input(&mut buf[..OK_HEADER.len()]).unwrap();
+    let len = uefi
+        .get_input(&mut buf[..OK_HEADER.len()])
+        .expect("failed to get input");
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
     loop {
-        let len = uefi.get_input(&mut buf).unwrap();
-        let msg = core::str::from_utf8(&buf[..len]).unwrap();
-        info!("get: {:?}", msg);
+        let len = uefi.get_input(&mut buf).expect("failed to get input");
+        // let msg = core::str::from_utf8(&buf[..len]).unwrap();
+        // debug!("get: {:?}", msg);
+
+        if buf[..len].ends_with(b"20220311122858") {
+            uefi.send_output(b"20220311122858")
+                .expect("failed to send output");
+        }
     }
 
     panic!("end");
@@ -76,13 +86,30 @@ impl<'a> Uefi<'a> {
     fn get_input(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut token = tcp4::ReceiveToken::new(unsafe { self.event.unsafe_clone() }, buf);
         // debug!("wait for input");
+        token.set_urgent(true);
         self.input.receive(&mut token)?;
         while token.status() == Status::NOT_READY {
             let _ = self.input.poll();
         }
+        if token.status() != Status::SUCCESS {
+            return Err(Error::from(token.status()));
+        }
         // let msg = core::str::from_utf8(token.as_ref()).unwrap();
         // debug!("get: {:?}", msg);
         Ok(token.len())
+    }
+
+    fn send_output(&mut self, buf: &[u8]) -> Result {
+        let mut token = tcp4::TransmitToken::new(unsafe { self.event.unsafe_clone() }, buf);
+        token.set_urgent(true);
+        self.output.transmit(&mut token)?;
+        while token.status() == Status::NOT_READY {
+            let _ = self.output.poll();
+        }
+        if token.status() != Status::SUCCESS {
+            return Err(Error::from(token.status()));
+        }
+        Ok(())
     }
 }
 
