@@ -205,12 +205,12 @@ impl Data for M2Data {
         for rr in &mut self.rtable {
             *rr = rs;
             rs = rs.map(|mut x| {
-                let c1 = x * (M2_R as u128 & 0xFFFF_FFFF) % M2;
-                x = (x << 32) % M2;
-                let c2 = x * ((M2_R >> 32) as u128 & 0xFFFF_FFFF) % M2;
-                x = (x << 32) % M2;
-                let c3 = x * ((M2_R >> 64) as u128 & 0xFFFF_FFFF) % M2;
-                (c1 + c2 + c3) % M2
+                let c1 = x * u128_mod_u128(M2_R as u128 & 0xFFFF_FFFF, M2);
+                x = u128_mod_u128(x << 32, M2);
+                let c2 = x * u128_mod_u128((M2_R >> 32) as u128 & 0xFFFF_FFFF, M2);
+                x = u128_mod_u128(x << 32, M2);
+                let c3 = x * u128_mod_u128((M2_R >> 64) as u128 & 0xFFFF_FFFF, M2);
+                u128_mod_u128(c1 + c2 + c3, M2)
             });
         }
     }
@@ -264,9 +264,25 @@ impl Data for M3Data {
         self.pre_start = self.i;
         for rr in &mut self.rtable {
             *rr = rs;
-            rs = rs.map(|x| (x as u128 * M3_R as u128 % M3_1 as u128) as u64);
+            rs = rs.map(|x| u128_mod_u128(x as u128 * M3_R as u128, M3_1 as u128) as u64);
         }
     }
+}
+
+#[cfg(target_os = "uefi")]
+#[inline]
+fn u128_mod_u128(n: u128, d: u128) -> u128 {
+    // WARN: u128 % u128 produce wrong result on UEFI
+    extern "C" {
+        #[allow(improper_ctypes)]
+        fn __umodti3(n: u128, d: u128) -> u128;
+    }
+    unsafe { __umodti3(n, d) }
+}
+#[cfg(not(target_os = "uefi"))]
+#[inline]
+fn u128_mod_u128(n: u128, d: u128) -> u128 {
+    n % d
 }
 
 impl M3Data {
