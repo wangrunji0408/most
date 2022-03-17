@@ -29,7 +29,7 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
         input_port: 10001,
         output_port: 10002,
     };
-    let mut uefi = Uefi::open(bs, &config);
+    let mut uefi = Uefi::open(bs, image, &config);
 
     const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
     let mut buf = [0; 1024];
@@ -58,16 +58,16 @@ struct Uefi<'a> {
     bs: &'a BootServices,
     event: Event,
     input: &'a mut tcp4::Tcp4,
-    // output: &'a mut tcp4::Tcp4,
+    output: &'a mut tcp4::Tcp4,
 }
 
 impl<'a> Uefi<'a> {
-    fn open(bs: &'a BootServices, config: &Config) -> Self {
+    fn open(bs: &'a BootServices, image: uefi::Handle, config: &Config) -> Self {
         info!("opening UEFI services: {:#?}", config);
         Uefi {
             bs,
-            input: open_tcp(bs, config, config.input_port),
-            // output: open_tcp(bs, config, config.output_port),
+            input: open_tcp(bs, image, config, config.input_port),
+            output: open_tcp(bs, image, config, config.output_port),
             event: unsafe { bs.create_event(EventType::empty(), Tpl::APPLICATION, None, None) }
                 .expect("failed to create event"),
         }
@@ -86,11 +86,28 @@ impl<'a> Uefi<'a> {
     }
 }
 
-fn open_tcp<'a>(bs: &'a BootServices, config: &Config, port: u16) -> &'a mut tcp4::Tcp4 {
+fn open_tcp<'a>(
+    bs: &'a BootServices,
+    image: uefi::Handle,
+    config: &Config,
+    port: u16,
+) -> &'a mut tcp4::Tcp4 {
+    let tcp4sb = bs
+        .locate_protocol::<tcp4::Tcp4ServiceBinding>()
+        .expect("failed to get Tcp4ServiceBinding protocol");
+    let tcp4sb = unsafe { &mut *tcp4sb.get() };
+    let handle = tcp4sb.create_child().expect("failed to create child");
     let tcp = bs
-        .locate_protocol::<tcp4::Tcp4>()
-        .expect("failed to get Tcp4 protocol");
-    let tcp = unsafe { &mut *tcp.get() };
+        .open_protocol::<tcp4::Tcp4>(
+            OpenProtocolParams {
+                handle,
+                agent: image,
+                controller: None,
+            },
+            OpenProtocolAttributes::GetProtocol,
+        )
+        .expect("failed to open net protocol");
+    let tcp = unsafe { &mut *tcp.interface.get() };
 
     tcp.configure(&tcp4::ConfigData {
         type_of_service: 0,
