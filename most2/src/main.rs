@@ -84,7 +84,7 @@ fn send(tcp: &mut TcpStream, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) 
             IoSlice::new(HEADER.as_bytes()),
             IoSlice::new(len_strs[i].as_bytes()),
             IoSlice::new(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]),
-            IoSlice::new(&buf[(buf.len() - zeros).max(len) - len..buf.len() - i]),
+            IoSlice::new(&buf[(buf.len() - zeros).max(len) - len..buf.len() - (zeros - i)]),
         ]);
         // let mut s = vec![];
         // s.extend_from_slice(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]);

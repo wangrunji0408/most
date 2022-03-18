@@ -102,7 +102,7 @@ fn send(uefi: &mut Uefi, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) {
     for i in 0..=zeros {
         write!(&mut output, "{HEADER}{}\r\n\r\n", len + i).unwrap();
         output.extend_from_slice(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]);
-        output.extend_from_slice(&buf[(buf.len() - zeros).max(len) - len..buf.len() - i]);
+        output.extend_from_slice(&buf[(buf.len() - zeros).max(len) - len..buf.len() - (zeros - i)]);
     }
     uefi.send_output(&output).expect("failed to send output");
 }
@@ -130,8 +130,7 @@ impl Write for StaticString {
         if self.len + s.len() > self.buf.len() {
             return Err(core::fmt::Error);
         }
-        self.buf[self.len..self.len + s.len()].copy_from_slice(s.as_bytes());
-        self.len += s.len();
+        self.extend_from_slice(s.as_bytes());
         Ok(())
     }
 }
