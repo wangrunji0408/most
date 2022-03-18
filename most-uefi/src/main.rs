@@ -172,7 +172,6 @@ impl<'a> Uefi<'a> {
     fn get_input(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut token = tcp4::ReceiveToken::new(unsafe { self.event.unsafe_clone() }, buf);
         // debug!("wait for input");
-        token.set_urgent(true);
         self.input.receive(&mut token)?;
         while token.status() == Status::NOT_READY {
             let _ = self.input.poll();
@@ -187,7 +186,6 @@ impl<'a> Uefi<'a> {
 
     fn send_output(&mut self, buf: &[u8]) -> Result {
         let mut token = tcp4::TransmitToken::new(unsafe { self.event.unsafe_clone() }, buf);
-        token.set_urgent(true);
         self.output.transmit(&mut token)?;
         while token.status() == Status::NOT_READY {
             let _ = self.output.poll();
