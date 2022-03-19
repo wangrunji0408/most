@@ -36,13 +36,25 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
         input_port: 10001,
         output_port: 10002,
     };
-    let mut uefi = Uefi::open(bs, image, &config);
+    info!("{:#?}", config);
+    loop {
+        let mut uefi = Uefi::open(bs, image, &config);
+        if let Err(e) = work(&mut uefi) {
+            error!("{:?}", e);
+        }
+    }
+    Status::SUCCESS
+}
+
+fn work(uefi: &mut Uefi) -> Result<(), &'static str> {
+    uefi.connect()
+        .map_err(|e| Error::new(e.status(), "failed to connect"))?;
 
     const OK_HEADER: &str = "HTTP/1.1 200 OK\r\nServer: Most\r\nContent-type: text/plain\r\n\r\n";
     let mut buf = [0; 1024];
     let len = uefi
         .get_input(&mut buf[..OK_HEADER.len()])
-        .expect("failed to get input");
+        .map_err(|e| Error::new(e.status(), "failed to get input header"))?;
     assert_eq!(&buf[..len], OK_HEADER.as_bytes());
 
     let mut m1 = M1Data::default();
@@ -51,7 +63,9 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
     let mut m4 = M4Data::default();
     let mut prev = vec![];
     loop {
-        let len = uefi.get_input(&mut buf).expect("failed to get input");
+        let len = uefi
+            .get_input(&mut buf)
+            .map_err(|e| Error::new(e.status(), "failed to get input data"))?;
         // let msg = core::str::from_utf8(&buf[..len]).unwrap();
         // debug!("get: {:?}", msg);
 
@@ -64,20 +78,21 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
                     zeros += 1;
                     i += 1;
                 }
-                send(&mut uefi, len, zeros, &prev, &buf[..=i]);
+                send(uefi, len, zeros, &prev, &buf[..=i])?;
                 info!("M{k} {len:3}+{zeros}");
+                Ok(())
             };
             if let Some(len) = m1.push(x) {
-                send(1, len);
+                send(1, len)?;
             }
             if let Some(len) = m2.push(x) {
-                send(2, len);
+                send(2, len)?;
             }
             if let Some(len) = m3.push(x) {
-                send(3, len);
+                send(3, len)?;
             }
             if let Some(len) = m4.push(x) {
-                send(4, len);
+                send(4, len)?;
             }
         }
         // update prev
@@ -91,12 +106,15 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
         m3.prepare();
         m4.prepare();
     }
-
-    panic!("end");
-    Status::SUCCESS
 }
 
-fn send(uefi: &mut Uefi, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) {
+fn send(
+    uefi: &mut Uefi,
+    len: usize,
+    zeros: usize,
+    prev: &[u8],
+    buf: &[u8],
+) -> Result<(), &'static str> {
     const HEADER: &str = "POST /submit HTTP/1.1\r\nHost: 59.110.124.141:10002\r\nUser-Agent: Go-http-client/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
     let mut output = StaticString::new();
     for i in 0..=zeros {
@@ -104,7 +122,8 @@ fn send(uefi: &mut Uefi, len: usize, zeros: usize, prev: &[u8], buf: &[u8]) {
         output.extend_from_slice(&prev[(prev.len() + buf.len() - zeros - len).min(prev.len())..]);
         output.extend_from_slice(&buf[(buf.len() - zeros).max(len) - len..buf.len() - (zeros - i)]);
     }
-    uefi.send_output(&output).expect("failed to send output");
+    uefi.send_output(&output)
+        .map_err(|e| Error::new(e.status(), "failed to send output"))
 }
 
 struct StaticString {
@@ -151,17 +170,14 @@ struct Config {
 }
 
 struct Uefi<'a> {
-    bs: &'a BootServices,
     event: Event,
-    input: &'a mut tcp4::Tcp4,
-    output: &'a mut tcp4::Tcp4,
+    input: ScopedProtocol<'a, tcp4::Tcp4>,
+    output: ScopedProtocol<'a, tcp4::Tcp4>,
 }
 
 impl<'a> Uefi<'a> {
     fn open(bs: &'a BootServices, image: uefi::Handle, config: &Config) -> Self {
-        info!("opening UEFI services: {:#?}", config);
         Uefi {
-            bs,
             input: open_tcp(bs, image, config, config.input_port),
             output: open_tcp(bs, image, config, config.output_port),
             event: unsafe { bs.create_event(EventType::empty(), Tpl::APPLICATION, None, None) }
@@ -169,32 +185,60 @@ impl<'a> Uefi<'a> {
         }
     }
 
+    fn event(&self) -> Event {
+        unsafe { self.event.unsafe_clone() }
+    }
+
+    fn input(&mut self) -> &mut tcp4::Tcp4 {
+        unsafe { &mut *self.input.interface.get() }
+    }
+
+    fn output(&mut self) -> &mut tcp4::Tcp4 {
+        unsafe { &mut *self.output.interface.get() }
+    }
+
+    fn connect(&mut self) -> Result {
+        let mut token = tcp4::ConnectionToken::new(self.event());
+        self.input().connect(&mut token)?;
+        busy_poll(self.input(), &token)?;
+
+        let mut token = tcp4::ConnectionToken::new(self.event());
+        self.output().connect(&mut token)?;
+        busy_poll(self.output(), &token)?;
+        Ok(())
+    }
+
     fn get_input(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let mut token = tcp4::ReceiveToken::new(unsafe { self.event.unsafe_clone() }, buf);
+        let mut token = tcp4::ReceiveToken::new(self.event(), buf);
         // debug!("wait for input");
-        self.input.receive(&mut token)?;
-        while token.status() == Status::NOT_READY {
-            let _ = self.input.poll();
-        }
-        if token.status() != Status::SUCCESS {
-            return Err(Error::from(token.status()));
-        }
+        self.input().receive(&mut token)?;
+        busy_poll(self.input(), &token)?;
         // let msg = core::str::from_utf8(token.as_ref()).unwrap();
         // debug!("get: {:?}", msg);
         Ok(token.len())
     }
 
     fn send_output(&mut self, buf: &[u8]) -> Result {
-        let mut token = tcp4::TransmitToken::new(unsafe { self.event.unsafe_clone() }, buf);
-        self.output.transmit(&mut token)?;
-        while token.status() == Status::NOT_READY {
-            let _ = self.output.poll();
-        }
-        if token.status() != Status::SUCCESS {
-            return Err(Error::from(token.status()));
-        }
+        let mut token = tcp4::TransmitToken::new(self.event(), buf);
+        self.output().transmit(&mut token)?;
+        busy_poll(self.output(), &token)?;
         Ok(())
     }
+}
+
+fn busy_poll(tcp: &mut tcp4::Tcp4, token: &tcp4::CompletionToken) -> Result {
+    let mut i = 0;
+    while token.status() == Status::NOT_READY {
+        let _ = tcp.poll();
+        i += 1;
+        if i == 10000000 {
+            return Err(Error::from(Status::TIMEOUT));
+        }
+    }
+    if token.status() != Status::SUCCESS {
+        return Err(Error::from(token.status()));
+    }
+    Ok(())
 }
 
 fn open_tcp<'a>(
@@ -202,13 +246,13 @@ fn open_tcp<'a>(
     image: uefi::Handle,
     config: &Config,
     port: u16,
-) -> &'a mut tcp4::Tcp4 {
+) -> ScopedProtocol<'a, tcp4::Tcp4> {
     let tcp4sb = bs
         .locate_protocol::<tcp4::Tcp4ServiceBinding>()
         .expect("failed to get Tcp4ServiceBinding protocol");
     let tcp4sb = unsafe { &mut *tcp4sb.get() };
     let handle = tcp4sb.create_child().expect("failed to create child");
-    let tcp = bs
+    let tcp_protocol = bs
         .open_protocol::<tcp4::Tcp4>(
             OpenProtocolParams {
                 handle,
@@ -218,7 +262,7 @@ fn open_tcp<'a>(
             OpenProtocolAttributes::GetProtocol,
         )
         .expect("failed to open net protocol");
-    let tcp = unsafe { &mut *tcp.interface.get() };
+    let tcp = unsafe { &mut *tcp_protocol.interface.get() };
 
     tcp.configure(&tcp4::ConfigData {
         type_of_service: 0,
@@ -237,14 +281,5 @@ fn open_tcp<'a>(
         },
     })
     .expect("failed to config TCP");
-
-    let event = unsafe { bs.create_event(EventType::empty(), Tpl::APPLICATION, None, None) }
-        .expect("failed to create event");
-    let mut token = tcp4::ConnectionToken::new(event);
-    tcp.connect(&mut token).expect("failed to connect");
-    while token.status() == Status::NOT_READY {
-        let _ = tcp.poll();
-    }
-
-    tcp
+    tcp_protocol
 }
