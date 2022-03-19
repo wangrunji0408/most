@@ -37,11 +37,10 @@ fn efi_main(image: uefi::Handle, mut st: SystemTable<Boot>) -> Status {
         output_port: 10002,
     };
     info!("{:#?}", config);
-    loop {
-        let mut uefi = Uefi::open(bs, image, &config);
-        if let Err(e) = work(&mut uefi) {
-            error!("{:?}", e);
-        }
+    let mut uefi = Uefi::open(bs, image, &config);
+    while let Err(e) = work(&mut uefi) {
+        error!("{:?}", e);
+        uefi.reset();
     }
     Status::SUCCESS
 }
@@ -170,16 +169,18 @@ struct Config {
 }
 
 struct Uefi<'a> {
+    config: &'a Config,
     event: Event,
     input: ScopedProtocol<'a, tcp4::Tcp4>,
     output: ScopedProtocol<'a, tcp4::Tcp4>,
 }
 
 impl<'a> Uefi<'a> {
-    fn open(bs: &'a BootServices, image: uefi::Handle, config: &Config) -> Self {
+    fn open(bs: &'a BootServices, image: uefi::Handle, config: &'a Config) -> Self {
         Uefi {
-            input: open_tcp(bs, image, config, config.input_port),
-            output: open_tcp(bs, image, config, config.output_port),
+            config,
+            input: open_tcp(bs, image),
+            output: open_tcp(bs, image),
             event: unsafe { bs.create_event(EventType::empty(), Tpl::APPLICATION, None, None) }
                 .expect("failed to create event"),
         }
@@ -189,23 +190,30 @@ impl<'a> Uefi<'a> {
         unsafe { self.event.unsafe_clone() }
     }
 
-    fn input(&mut self) -> &mut tcp4::Tcp4 {
+    fn input<'b>(&mut self) -> &'b mut tcp4::Tcp4 {
         unsafe { &mut *self.input.interface.get() }
     }
 
-    fn output(&mut self) -> &mut tcp4::Tcp4 {
+    fn output<'b>(&mut self) -> &'b mut tcp4::Tcp4 {
         unsafe { &mut *self.output.interface.get() }
     }
 
     fn connect(&mut self) -> Result {
         let mut token = tcp4::ConnectionToken::new(self.event());
+        configure_tcp(self.input(), &self.config, self.config.input_port)?;
         self.input().connect(&mut token)?;
         busy_poll(self.input(), &token)?;
 
         let mut token = tcp4::ConnectionToken::new(self.event());
+        configure_tcp(self.output(), &self.config, self.config.output_port)?;
         self.output().connect(&mut token)?;
         busy_poll(self.output(), &token)?;
         Ok(())
+    }
+
+    fn reset(&mut self) {
+        let _ = self.input().reset();
+        let _ = self.output().reset();
     }
 
     fn get_input(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -241,12 +249,7 @@ fn busy_poll(tcp: &mut tcp4::Tcp4, token: &tcp4::CompletionToken) -> Result {
     Ok(())
 }
 
-fn open_tcp<'a>(
-    bs: &'a BootServices,
-    image: uefi::Handle,
-    config: &Config,
-    port: u16,
-) -> ScopedProtocol<'a, tcp4::Tcp4> {
+fn open_tcp<'a>(bs: &'a BootServices, image: uefi::Handle) -> ScopedProtocol<'a, tcp4::Tcp4> {
     let tcp4sb = bs
         .locate_protocol::<tcp4::Tcp4ServiceBinding>()
         .expect("failed to get Tcp4ServiceBinding protocol");
@@ -262,8 +265,10 @@ fn open_tcp<'a>(
             OpenProtocolAttributes::GetProtocol,
         )
         .expect("failed to open net protocol");
-    let tcp = unsafe { &mut *tcp_protocol.interface.get() };
+    tcp_protocol
+}
 
+fn configure_tcp(tcp: &mut tcp4::Tcp4, config: &Config, port: u16) -> Result {
     tcp.configure(&tcp4::ConfigData {
         type_of_service: 0,
         time_to_live: 64,
@@ -280,6 +285,4 @@ fn open_tcp<'a>(
             ..Default::default()
         },
     })
-    .expect("failed to config TCP");
-    tcp_protocol
 }
