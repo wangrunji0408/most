@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-uefi = { path = "../../uefi-rs" }
-uefi-services = { path = "../../uefi-rs/uefi-services" }
+uefi = { git = "https://github.com/rcore-os/uefi-rs.git", rev = "3fdcc46" }
+uefi-services = { git = "https://github.com/rcore-os/uefi-rs.git", rev = "3fdcc46" }
 log = "0.4"
 most2 = { path = "../most2", default-features = false }

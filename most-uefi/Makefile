@@ -1,7 +1,7 @@
 MODE ?= release
-EFI := ../target/x86_64-unknown-uefi/$(MODE)/most-uefi.efi
+EFI := target/x86_64-unknown-uefi/$(MODE)/most-uefi.efi
 OVMF := OVMF.fd
-ESP := ../target/esp
+ESP := target/esp
 QEMU_ARGS := -nographic
 #	-debugcon file:debug.log -global isa-debugcon.iobase=0x402
 OBJDUMP := rust-objdump

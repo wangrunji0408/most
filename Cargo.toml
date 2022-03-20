@@ -1,9 +1,6 @@
 [workspace]
-members = [
-    "most",
-    "most2",
-    "most-uefi",
-]
+members = ["most","most2"]
+exclude = ["most-uefi"]
 
 [profile.release]
 debug = true
